@@ -1,0 +1,8 @@
+developer 1
+map de_dust2
+developer 0
+sv_cheats 1
+bot_dont_shoot 1
+bot_kick all
+bot_add_ct
+script_execute BlinkBoxVscript.nut
