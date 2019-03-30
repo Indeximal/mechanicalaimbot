@@ -5,13 +5,9 @@ import cv2
 # no negative samples
 #
 # !ssize.empty() in function 'cv::resize'
-#
 
+i = 0
 
-
-
-
-#set value to not zero
 consistColor = 2
 
 contours = 0
@@ -30,43 +26,36 @@ _ ,frame = cap.read()
 
 
 for i in range(length-1):
-	#get first frame
 	
 	#check if 1 video with pink blob other no blob
 	while consistColor != 0 or len(contours) == 0:
 		frame0 = frame
 		_, frame = cap.read()
-		#1 frame read
-		i+=1
+
+		i += 1
 
 		#detect color in frame0
 		contours, _ = cv2.findContours(cv2.inRange(frame0,boxColorLower,boxColorUpper), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 		consistColor = len(contours)
 		#detect color in frame
 		contours, _ = cv2.findContours(cv2.inRange(frame, boxColorLower, boxColorUpper), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-		#print(contours)
 	
 
 		
 	blob = max(contours, key=lambda el: cv2.contourArea(el))
 	M = cv2.moments(blob)
 		
-	#division by 0
-	if M["m00"] != 0:
 
-		#size of head picture
-		pixels = (M["m00"])*3
-		#x,y coordinates
-		center = (M["m10"] / M["m00"], M["m01"] / M["m00"])
+	#size of head
+	x,y,w,_ = cv2.boundingRect(blob)
+	pixels = w*4
 			
-		#crop image
-		frame0 = frame0[int(center[1]-(pixels/2)):int(center[1]+(pixels/2)),int(center[0]-(pixels/2)):int(center[0]+(pixels/2)) ,:]
-		#check if frame0 isnt 0
-		if len(frame0) > 0 :
-			#scale image
-			frame0 = cv2.resize(frame0, dsize=(50,50))
-			#store frame
-			cv2.imwrite("frame%d.jpeg" %i, frame0)
+	#crop image
+	s = frame0[int(y-(pixels/2)):int(y+(pixels/2)),int(x-(pixels/2)):int(x+(pixels/2)) ,:]
+	#scale image
+	savedFrame = cv2.resize(s, dsize=(50,50))
+	#store frame
+	cv2.imwrite("frame%d.jpeg" %i, savedFrame)
 
 	#activate while loop
 	consistColor = 3
