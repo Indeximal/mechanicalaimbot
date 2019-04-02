@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import sys, os
+import random
 
 # Settings
 pinkMargin = 30
@@ -12,12 +13,17 @@ sampleSize = 150
 # Input and Output
 videoIn = sys.argv[1]
 sampleOut = os.path.join(sys.argv[2], "p{:05}.png")
+negativeSampleOut = os.path.join(sys.argv[3], "p{:05}.png")
 
 # Range of pink
 boxColorUpper = np.array([255,  pinkMargin, 255], np.uint8)
 boxColorLower = np.array([255 - pinkMargin, 0, 250 - pinkMargin], np.uint8)
 
 cap = cv2.VideoCapture(sys.argv[1])
+
+# get width and height of frames
+frameWidth = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+frameHeight = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
 
 # This is the last frame if it is doesn't contain boxes otherwise this is None.
 # Samples are croped from this frame.
@@ -57,6 +63,13 @@ while ret:
             sample = lastCleanFrameOrNone[y - padding : y + padding, x - padding : x + padding]
             sample = cv2.resize(sample, (sampleSize, sampleSize))
 
+            # Get random coordinates in pic
+            x = random.randint(int(padding)+1, int(frameWidth-padding) )
+            y = random.randint(int(padding)+1, int(frameHeight-padding) )
+            # Crop a negative sample from the last frame and resize it
+            negativeSample = lastCleanFrameOrNone[y - padding : y + padding, x - padding : x + padding]
+            negativeSample = cv2.resize(negativeSample, (sampleSize, sampleSize))
+
             # Debug
             # cv2.imshow("Sample", sample)
             # samplePink = cv2.resize(frame[y - padding : y + padding, x - padding : x + padding], (sampleSize, sampleSize))
@@ -65,6 +78,7 @@ while ret:
             #     exit()
 
             cv2.imwrite(sampleOut.format(sampleCounter), sample)
+            cv2.imwrite(negativeSampleOut.format(sampleCounter), negativeSample)
 
             sampleCounter += 1
 
