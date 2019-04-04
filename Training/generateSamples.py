@@ -37,7 +37,7 @@ while ret:
     pinkMask = cv2.inRange(frame, boxColorLower, boxColorUpper)
 
     # Finds blobs bigger than contourMinArea in the mask
-    _, contours, _ = cv2.findContours(pinkMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(pinkMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     bigContours = [c for c in contours if cv2.contourArea(c) > contourMinArea]
 
     # If this frame doesn't contain any pink, it is saved for possible later use.
