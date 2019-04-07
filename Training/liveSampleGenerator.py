@@ -54,7 +54,8 @@ with mss.mss() as sct:
         # cv2.imshow("pink", pinkMask)
 
         # Finds blobs bigger than contourMinArea in the mask
-        _, contours, _ = cv2.findContours(pinkMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        retTuple = cv2.findContours(pinkMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours = retTuple[-2] # Allows for OpenCV 3 and 4
         bigContours = [c for c in contours if cv2.contourArea(c) > contourMinArea]
 
         # If this frame doesn't contain any pink, it is saved for possible later use.

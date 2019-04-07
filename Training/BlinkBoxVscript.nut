@@ -1,4 +1,8 @@
-// Finds all the bots ingame and store them in an array
+
+// Reference to the player to get his coordinates
+player <- Entities.FindByClassname(null, "player"); 
+
+// Finds all the enemy bots ingame and store them in an array
 last <- null;
 bots <- [];
 
@@ -6,13 +10,10 @@ for(;;) {
     last = Entities.FindByClassname(last, "cs_bot");
     if (last == null)
         break;
-    bots.append(last);
+    if (last.GetTeam() != player.GetTeam())
+        bots.append(last);
 }
 printl("Found " + bots.len() + " bots.");
-
-// Reference to the player to get his coordinates
-player <- Entities.FindByClassname(null, "player"); 
-
 
 // Mainly copied from https://developer.valvesoftware.com/wiki/CSGO_Vscript_Examples, 20.03.2019
 
@@ -36,7 +37,7 @@ timerScope.DoThink <- function() {
         pos <- bot.EyePosition() + bot.GetForwardVector() * 6;
 
         // Draws a colored box over every head so we can easily find them
-        DebugDrawBox(pos, Vector(2, 2, 2), Vector(-2, -2, -2), 255, 0, 255, 255, 0.05);
+        DebugDrawBox(pos, Vector(2, 2, 2), Vector(-2, -2, -2), 255, 0, 255, 255, 0.03);
     }
 };
 
@@ -44,6 +45,6 @@ timerScope.DoThink <- function() {
 thinkTimer.ConnectOutput("OnTimer", "DoThink");
 
 // Set the frequency of the timer and start it
-thinkTimer.__KeyValueFromFloat("RefireTime", 0.1);
+thinkTimer.__KeyValueFromFloat("RefireTime", 0.06);
 EntFireByHandle(thinkTimer, "Enable", "", 0, null, null);
 

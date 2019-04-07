@@ -8,12 +8,12 @@ pinkMargin = 30
 contourMinArea = 50
 samplePaddingMultiplier = 2.0
 maxBlobInertia = 0.31
-sampleSize = 150
+sampleSize = 50
 
 # Input and Output
 videoIn = sys.argv[1]
 sampleOut = os.path.join(sys.argv[2], "p{:05}.png")
-negativeSampleOut = os.path.join(sys.argv[3], "p{:05}.png")
+negativeSampleOut = os.path.join(sys.argv[3], "n{:05}.png")
 
 # Range of pink
 boxColorUpper = np.array([255,  pinkMargin, 255], np.uint8)
@@ -37,7 +37,8 @@ while ret:
     pinkMask = cv2.inRange(frame, boxColorLower, boxColorUpper)
 
     # Finds blobs bigger than contourMinArea in the mask
-    contours, _ = cv2.findContours(pinkMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    retTuple = cv2.findContours(pinkMask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours = retTuple[-2] # Allows for OpenCV 3 and 4
     bigContours = [c for c in contours if cv2.contourArea(c) > contourMinArea]
 
     # If this frame doesn't contain any pink, it is saved for possible later use.
@@ -54,6 +55,10 @@ while ret:
             # Calculate the how squareish the blob is
             inertia = abs((h - w) / w)
             if inertia > maxBlobInertia: 
+                continue
+
+            # Check bounds
+            if y - padding < 0 or y + padding >= frameHeight or x - padding < 0 or x + padding >= frameWidth:
                 continue
 
             # Print Debug Information
