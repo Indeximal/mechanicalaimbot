@@ -7,10 +7,14 @@ import cv2
 
 # An algorithm to compute the path of each point from a start and an end set 
 # of points. Used to interpolate the coordinates.
-# BUG: empty lists returns []
 def computePaths(start, end, max_dist):
     points1 = np.array(start)
     points2 = np.array(end)
+
+    if points1.size == 0:
+        return [(None, p) for p in points2]
+    if points2.size == 0:
+        return [(p, None) for p in points1]
 
     # Get the squared distances of all the possible combinations of points.
     all_distances = [(sum((points1[n] - points2[m]) ** 2), n, m) 
