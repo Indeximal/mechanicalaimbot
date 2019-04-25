@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 import os
 
@@ -55,14 +56,19 @@ parser = argparse.ArgumentParser(
     description="Generates haarcascade training samples from different inputs.",
     epilog="Other more technical options are defined in the script.")
 parser.add_argument("video", help="input video path")
-parser.add_argument("--positives_path", "-p", help="output folder for the positives",
-                    metavar="PATH")
-parser.add_argument("--negatives_path", "-n", help="output folder for the negatives",
-                    metavar="PATH")
-parser.add_argument("--num_negatives_target", type=int, default=1000, metavar="N",
-                    help="Approximate number of negatives to be generated.")
+parser.add_argument("--positives_path", "-p",
+    help="output folder for the positives", metavar="PATH")
+parser.add_argument("--negatives_path", "-n", 
+    help="output folder for the negatives", metavar="PATH")
+parser.add_argument("--num_negatives_target", type=int, default=1000, 
+    metavar="N", help="approximate number of negatives to be generated")
 parser.add_argument("--sample_name_format", default="{:05}.png", metavar="FORMAT")
+parser.add_argument("--frame_name_format", default="f{:05}.png", metavar="FORMAT")
 parser.add_argument("--no_interpolation", action="store_false", dest="interpolate")
+parser.add_argument("--output_frames", metavar="PATH",
+    help="output folder for the good frames")
+parser.add_argument("--head_pos_data", metavar="PATH",
+    help="output path for a json file with the head positions")
 
 args = parser.parse_args()
 
@@ -71,7 +77,6 @@ args = parser.parse_args()
 pinkMargin = 30
 contourMinArea = 50
 samplePaddingMultiplier = 2.0
-maxBlobInertia = 0.31
 sampleSize = 50
 meanNegSampleSize = np.log(20)
 stdevNegSample = np.log(1.6)
@@ -79,12 +84,15 @@ maxInterpFrameDiff = 4
 maxHeadMovement = 100
 
 # Output options
-generateNegatives = args.negatives_path is not None
 generatePositives = args.positives_path is not None
 if generatePositives:
     posSampleOut = os.path.join(args.positives_path, args.sample_name_format)
+generateNegatives = args.negatives_path is not None
 if generateNegatives:
     negSampleOut = os.path.join(args.negatives_path, args.sample_name_format)
+outputFrames = args.output_frames is not None
+if outputFrames:
+    framesOut = os.path.join(args.output_frames, args.frame_name_format)
 
 # Range of pink
 boxColorUpper = np.array([255,  pinkMargin, 255], np.uint8)
@@ -98,15 +106,16 @@ frameHeight = videoCapture.get(cv2.CAP_PROP_FRAME_HEIGHT)
 videoLength = int(videoCapture.get(cv2.CAP_PROP_FRAME_COUNT))
 avgNumNegPerFrame = args.num_negatives_target / videoLength
 
+sampleCounter = 0
+negSampleCounter = 0
+frameCounter = 0
+headData = {}
+
 # This is the last frame if it is doesn't contain boxes otherwise this is None.
 # Samples are croped from this frame.
 lastCleanFrameOrNone = None
-
 lastHeads = []
 framesSinceLastHead = 0
-
-sampleCounter = 0
-negSampleCounter = 0
 ret, frame = videoCapture.read()
 
 while ret:
@@ -141,7 +150,12 @@ while ret:
             negSampleCounter += 1
 
     # If this is a pink frame after non-pink ones, samples are croped.
-    elif generatePositives and lastCleanFrameOrNone is not None:
+    elif lastCleanFrameOrNone is not None:
+
+        if outputFrames:
+            cv2.imwrite(framesOut.format(frameCounter), lastCleanFrameOrNone)
+
+        # Find heads
         currentHeads = []
         for c in bigContours:
             moments = cv2.moments(c)
@@ -150,12 +164,6 @@ while ret:
 
             _, _, w, h = cv2.boundingRect(c)
             padding = (w + h) / 2 * samplePaddingMultiplier
-
-            # Calculate the how squareish the blob is, to reject squished heads
-            # or two heads fused together.
-            inertia = abs((h - w) / w)
-            if inertia > maxBlobInertia: 
-                continue
 
             currentHeads.append((x, y, padding))
 
@@ -175,31 +183,43 @@ while ret:
         else:
             heads = currentHeads
 
-        for x, y, padding in heads:
-            ymin = int(y - padding)
-            ymax = int(y + padding)
-            xmin = int(x - padding)
-            xmax = int(x + padding)
+        # Head data file
+        if args.head_pos_data:
+            headsArr = [[int(x), int(y), int(2*p)] for x, y, p in heads]
+            headData["{:05}".format(frameCounter)] = headsArr
 
-            # Check bounds
-            if ymin < 0 or ymax >= frameHeight or \
-               xmin < 0 or xmax >= frameWidth:
-                continue
+        # Positives
+        if generatePositives:
+            for x, y, padding in heads:
+                ymin = int(y - padding)
+                ymax = int(y + padding)
+                xmin = int(x - padding)
+                xmax = int(x + padding)
 
-            # Crop a sample from the last frame and resize it
-            sample = lastCleanFrameOrNone[ymin : ymax, xmin : xmax]
-            sample = cv2.resize(sample, (sampleSize, sampleSize))
-            
-            cv2.imwrite(posSampleOut.format(sampleCounter), sample)
-            sampleCounter += 1
+                # Check bounds
+                if ymin < 0 or ymax >= frameHeight or \
+                   xmin < 0 or xmax >= frameWidth:
+                    continue
+
+                # Crop a sample from the last frame and resize it
+                sample = lastCleanFrameOrNone[ymin : ymax, xmin : xmax]
+                sample = cv2.resize(sample, (sampleSize, sampleSize))
+                
+                cv2.imwrite(posSampleOut.format(sampleCounter), sample)
+                sampleCounter += 1
 
         # The last frame (this) is no longer a clean one.
         lastCleanFrameOrNone = None
         lastHeads = currentHeads
         framesSinceLastHead = 0
+        frameCounter += 1
 
     ret, frame = videoCapture.read()
     framesSinceLastHead += 1
 
-print("Generated", sampleCounter, "positive samples and", negSampleCounter,
-      "negative samples.")
+if args.head_pos_data:
+    with open(args.head_pos_data, "w") as datafile:
+        json.dump(headData, datafile)
+
+print("Generated", sampleCounter, "positive samples,", negSampleCounter,
+      "negative samples,", frameCounter, "good frames.")
