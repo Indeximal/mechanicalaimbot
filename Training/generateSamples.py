@@ -1,3 +1,4 @@
+import argparse
 import sys
 import os
 
@@ -49,32 +50,53 @@ def computePaths(start, end, max_dist):
     return paths
 
 
+# Input and Output
+parser = argparse.ArgumentParser(
+    description="Generates haarcascade training samples from different inputs.",
+    epilog="Other more technical options are defined in the script.")
+parser.add_argument("video", help="input video path")
+parser.add_argument("--positives_path", "-p", help="output folder for the positives",
+                    metavar="PATH")
+parser.add_argument("--negatives_path", "-n", help="output folder for the negatives",
+                    metavar="PATH")
+parser.add_argument("--num_negatives_target", type=int, default=1000, metavar="N",
+                    help="Approximate number of negatives to be generated.")
+parser.add_argument("--sample_name_format", default="{:05}.png", metavar="FORMAT")
+parser.add_argument("--no_interpolation", action="store_false", dest="interpolate")
+
+args = parser.parse_args()
+
+
 # Settings
 pinkMargin = 30
 contourMinArea = 50
 samplePaddingMultiplier = 2.0
 maxBlobInertia = 0.31
 sampleSize = 50
-avgNumNegPerFrame = 0.03
-meanNegSampleSize = np.log(22)
+meanNegSampleSize = np.log(20)
 stdevNegSample = np.log(1.6)
 maxInterpFrameDiff = 4
 maxHeadMovement = 100
 
-# Input and Output
-videoIn = sys.argv[1]
-sampleOut = os.path.join(sys.argv[2], "p{:05}.png")
-negSampleOut = os.path.join(sys.argv[3], "n{:05}.png")
+# Output options
+generateNegatives = args.negatives_path is not None
+generatePositives = args.positives_path is not None
+if generatePositives:
+    posSampleOut = os.path.join(args.positives_path, args.sample_name_format)
+if generateNegatives:
+    negSampleOut = os.path.join(args.negatives_path, args.sample_name_format)
 
 # Range of pink
 boxColorUpper = np.array([255,  pinkMargin, 255], np.uint8)
 boxColorLower = np.array([255 - pinkMargin, 0, 250 - pinkMargin], np.uint8)
 
-videoCapture = cv2.VideoCapture(sys.argv[1])
+videoCapture = cv2.VideoCapture(args.video)
 
 # get width and height of frames
 frameWidth = videoCapture.get(cv2.CAP_PROP_FRAME_WIDTH)
 frameHeight = videoCapture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+videoLength = int(videoCapture.get(cv2.CAP_PROP_FRAME_COUNT))
+avgNumNegPerFrame = args.num_negatives_target / videoLength
 
 # This is the last frame if it is doesn't contain boxes otherwise this is None.
 # Samples are croped from this frame.
@@ -103,7 +125,7 @@ while ret:
         lastCleanFrameOrNone = frame
 
         # Negative sample generation on clean frames
-        if np.random.random() < avgNumNegPerFrame:
+        if generateNegatives and np.random.random() < avgNumNegPerFrame:
             # Generate a random positive size with medium values more common.
             size = np.random.lognormal(meanNegSampleSize, stdevNegSample)
             size = int(np.ceil(size)) # Avoid zero-size by ceiling.
@@ -119,7 +141,7 @@ while ret:
             negSampleCounter += 1
 
     # If this is a pink frame after non-pink ones, samples are croped.
-    elif lastCleanFrameOrNone is not None:
+    elif generatePositives and lastCleanFrameOrNone is not None:
         currentHeads = []
         for c in bigContours:
             moments = cv2.moments(c)
@@ -138,7 +160,8 @@ while ret:
             currentHeads.append((x, y, padding))
 
         # Interpolate head positon and sizes if useful.
-        if lastHeads and framesSinceLastHead <= maxInterpFrameDiff:
+        if args.interpolate and lastHeads and \
+           framesSinceLastHead <= maxInterpFrameDiff:
             paths = computePaths(lastHeads, currentHeads, maxHeadMovement)
             ongoingPaths = [(np.array(start), np.array(end)) for start, end 
                             in paths if start is not None and end is not None]
@@ -167,7 +190,7 @@ while ret:
             sample = lastCleanFrameOrNone[ymin : ymax, xmin : xmax]
             sample = cv2.resize(sample, (sampleSize, sampleSize))
             
-            cv2.imwrite(sampleOut.format(sampleCounter), sample)
+            cv2.imwrite(posSampleOut.format(sampleCounter), sample)
             sampleCounter += 1
 
         # The last frame (this) is no longer a clean one.
