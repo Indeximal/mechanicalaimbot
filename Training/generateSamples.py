@@ -56,19 +56,22 @@ parser = argparse.ArgumentParser(
     description="Generates haarcascade training samples from different inputs.",
     epilog="Other more technical options are defined in the script.")
 parser.add_argument("video", help="input video path")
-parser.add_argument("--positives_path", "-p",
+parser.add_argument("-v", "--show_progress", action="store_true", dest="progress")
+parser.add_argument("-p", "--positives_path", dest="positives_path",
     help="output folder for the positives", metavar="PATH")
-parser.add_argument("--negatives_path", "-n", 
+parser.add_argument( "-n", "--negatives_path", dest="negatives_path",
     help="output folder for the negatives", metavar="PATH")
 parser.add_argument("--num_negatives_target", type=int, default=1000, 
     metavar="N", help="approximate number of negatives to be generated")
-parser.add_argument("--sample_name_format", default="{:05}.png", metavar="FORMAT")
+parser.add_argument("--sample_name_format", default="s{:05}.png", metavar="FORMAT")
 parser.add_argument("--frame_name_format", default="f{:05}.png", metavar="FORMAT")
 parser.add_argument("--no_interpolation", action="store_false", dest="interpolate")
 parser.add_argument("--output_frames", metavar="PATH",
     help="output folder for the good frames")
 parser.add_argument("--head_pos_data", metavar="PATH",
     help="output path for a json file with the head positions")
+parser.add_argument("--sample_size", type=int, default=50, metavar="PIXELS")
+parser.add_argument("--padding", type=float, default=2.0, metavar="FACTOR")
 
 args = parser.parse_args()
 
@@ -76,8 +79,8 @@ args = parser.parse_args()
 # Settings
 pinkMargin = 30
 contourMinArea = 50
-samplePaddingMultiplier = 2.0
-sampleSize = 50
+samplePaddingMultiplier = args.padding
+sampleSize = args.sample_size
 meanNegSampleSize = np.log(20)
 stdevNegSample = np.log(1.6)
 maxInterpFrameDiff = 4
@@ -117,6 +120,7 @@ lastCleanFrameOrNone = None
 lastHeads = []
 framesSinceLastHead = 0
 ret, frame = videoCapture.read()
+
 
 while ret:
     # Generates a binary image based on if the pixels are pink
@@ -212,10 +216,15 @@ while ret:
         lastCleanFrameOrNone = None
         lastHeads = currentHeads
         framesSinceLastHead = 0
-        frameCounter += 1
+        if outputFrames or args.head_pos_data: 
+            frameCounter += 1
 
     ret, frame = videoCapture.read()
     framesSinceLastHead += 1
+
+    if args.progress:
+        currFrame = videoCapture.get(cv2.CAP_PROP_POS_FRAMES)
+        print(int(currFrame * 100 / videoLength), "%", end="\r", sep="")
 
 if args.head_pos_data:
     with open(args.head_pos_data, "w") as datafile:
