@@ -51,6 +51,14 @@ def computePaths(start, end, max_dist):
     return paths
 
 
+def boundingSquare(midX, midY, halfSize):
+    return (
+        int(y - padding),
+        int(y + padding),
+        int(x - padding),
+        int(x + padding)
+    )
+
 # Input and Output
 parser = argparse.ArgumentParser(
     description="Generates haarcascade training samples from different inputs.",
@@ -72,6 +80,13 @@ parser.add_argument("--head_pos_data", metavar="PATH",
     help="output path for a json file with the head positions")
 parser.add_argument("--sample_size", type=int, default=50, metavar="PIXELS")
 parser.add_argument("--padding", type=float, default=2.0, metavar="FACTOR")
+parser.add_argument("--cascade_file")
+parser.add_argument("--cascade_scale_factor", type=float, default=1.1)
+parser.add_argument("--cascade_min_neighbors", type=int, default=3)
+parser.add_argument("--drop_hits", action="store_true", help="don't output "
+    "correctly identified samples")
+parser.add_argument("--negatives_mode", choices=["random", "false_positives"],
+    default="random")
 
 args = parser.parse_args()
 
@@ -85,6 +100,8 @@ meanNegSampleSize = np.log(20)
 stdevNegSample = np.log(1.6)
 maxInterpFrameDiff = 4
 maxHeadMovement = 100
+maxDistForCorrect = 30
+
 
 # Output options
 generatePositives = args.positives_path is not None
@@ -96,6 +113,9 @@ if generateNegatives:
 outputFrames = args.output_frames is not None
 if outputFrames:
     framesOut = os.path.join(args.output_frames, args.frame_name_format)
+useCascade = args.cascade_file is not None
+if useCascade:
+    haarCascade = cv2.CascadeClassifier(args.cascade_file)
 
 # Range of pink
 boxColorUpper = np.array([255,  pinkMargin, 255], np.uint8)
@@ -138,7 +158,8 @@ while ret:
         lastCleanFrameOrNone = frame
 
         # Negative sample generation on clean frames
-        if generateNegatives and np.random.random() < avgNumNegPerFrame:
+        if generateNegatives and args.negatives_mode == "random" and \
+           np.random.random() < avgNumNegPerFrame:
             # Generate a random positive size with medium values more common.
             size = np.random.lognormal(meanNegSampleSize, stdevNegSample)
             size = int(np.ceil(size)) # Avoid zero-size by ceiling.
@@ -167,7 +188,7 @@ while ret:
             y = moments['m01'] / moments['m00']
 
             _, _, w, h = cv2.boundingRect(c)
-            padding = (w + h) / 2 * samplePaddingMultiplier
+            padding = (w + h) / 2
 
             currentHeads.append((x, y, padding))
 
@@ -189,16 +210,50 @@ while ret:
 
         # Head data file
         if args.head_pos_data:
-            headsArr = [[int(x), int(y), int(2*p)] for x, y, p in heads]
-            headData["{:05}".format(frameCounter)] = headsArr
+            headsArr = [[int(x), int(y), int(r)] for x, y, r in heads]
+            headData[args.frame_name_format.format(frameCounter)] = headsArr
+
+        # Haarcascade detection
+        if useCascade:
+            detectedRects = haarCascade.detectMultiScale(lastCleanFrameOrNone, 
+                args.cascade_scale_factor, args.cascade_min_neighbors)
+            detectedHeads = [(int(x + w / 2), int(y + h / 2), int((w + h) / 4))
+                for x, y, w, h in detectedRects]
+            # Compare the detected heads and the ones from the video
+            paths = computePaths(detectedHeads, heads, maxDistForCorrect)
+            # Cateorize based on detection
+            hits = [contr for detec, contr in paths if detec is not None and \
+                    contr is not None]
+            misses = [contr for detec, contr in paths if detec is None]
+            falsePos = [detec for detec, contr in paths if contr is None]
+
+            if hits:
+                print("HIT")
+
+        # False-alarm negative samples
+        if generateNegatives and args.negatives_mode == "false_positives":
+            for x, y, padding in falsePos:
+                ymin, ymax, xmin, xmax = boundingSquare(x, y, padding)
+
+                # Check bounds
+                if ymin < 0 or ymax >= frameHeight or \
+                   xmin < 0 or xmax >= frameWidth:
+                    continue
+
+                # Crop a sample from the last frame and resize it
+                sample = lastCleanFrameOrNone[ymin : ymax, xmin : xmax]
+                sample = cv2.resize(sample, (sampleSize, sampleSize))
+                
+                cv2.imwrite(negSampleOut.format(negSampleCounter), sample)
+                negSampleCounter += 1
 
         # Positives
         if generatePositives:
-            for x, y, padding in heads:
-                ymin = int(y - padding)
-                ymax = int(y + padding)
-                xmin = int(x - padding)
-                xmax = int(x + padding)
+            headsToOutput = misses if args.drop_hits else heads
+
+            for x, y, size in headsToOutput:
+                padding = size * samplePaddingMultiplier
+                ymin, ymax, xmin, xmax = boundingSquare(x, y, padding)
 
                 # Check bounds
                 if ymin < 0 or ymax >= frameHeight or \
