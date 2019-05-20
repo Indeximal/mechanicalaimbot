@@ -227,9 +227,6 @@ while ret:
             misses = [contr for detec, contr in paths if detec is None]
             falsePos = [detec for detec, contr in paths if contr is None]
 
-            if hits:
-                print("HIT")
-
         # False-alarm negative samples
         if generateNegatives and args.negatives_mode == "false_positives":
             for x, y, padding in falsePos:
