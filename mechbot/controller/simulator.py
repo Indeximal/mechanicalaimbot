@@ -18,8 +18,11 @@ class MechanicalSimulator:
         self.target2 = 0
         self.move = False
 
+    def get_interface(self):
+        return self
+
     def get_input(self):
-        return self.stick_pos
+        return np.array(self.stick_pos)
 
     def cmd_goto(self, a, b):
         self.move = True

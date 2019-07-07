@@ -7,11 +7,11 @@ from mechbot.utils.vector_utils import vec_len
 from mechbot.utils import pygame_utils
 from mechbot.controller.simulator import MechanicalSimulator
 from mechbot.controller.device import MechanicalDevice, StepperMotor
+from mechbot.controller.calibration import CalibrationHelper
 
 
 # Cordinate conversion
 camera = pygame_utils.Camera(150, 640, 320)
-
 
 # PYGAME INIT
 pygame.init()
@@ -34,6 +34,8 @@ simulation = MechanicalSimulator(motor1, motor2, gap=.2, stick_r=.1, stick_force
 
 mech_controller = MechanicalDevice(motor1, motor2, gap=.2, stick=.1)
 target = (0, 0)
+
+calibrator = CalibrationHelper(simulation.get_interface())
 
 tick_counter = 0
 
@@ -102,6 +104,8 @@ while running:
             step2 += 1
             if step2 > step_range:
                 collecting = False
+
+    calibrator.tick(tick_counter)
 
     # DRAWING
     screen.fill((255, 255, 255))

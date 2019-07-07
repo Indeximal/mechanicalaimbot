@@ -59,4 +59,3 @@ class MechanicalDevice:
         pos = np.array(cord)
         return self._calculate_step(motor1, pos), self._calculate_step(motor2, pos)
 
-        
