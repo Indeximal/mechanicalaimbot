@@ -1,10 +1,8 @@
 import numpy as np
-import pygame
 
 from mechbot.utils.vector_utils import vec_len
 
 # from mechbot.controller.simulator import MechanicalSimulator
-from mechbot.controller.device import MechanicalDevice, StepperMotor
 
 
 class CalibrationHelper:
@@ -25,15 +23,18 @@ class CalibrationHelper:
     def _evaluate_phase_1(self):
         points = np.array(self.phase_1_points)
         print(points)
-        h_lines = [np.polyfit(points[..., i, 0], points[..., i, 1], 1) for i in range(3)]
+        h_lines = [np.polyfit(points[..., i, 0], points[..., i, 1], 1)
+                   for i in range(3)]
         m1_x = [(h_lines[i][0] - h_lines[j][0]) / (h_lines[i][1] - h_lines[j][1])
-                     for i, j in [(0, 1), (1, 2), (2, 0)]]
-        m1_y = np.array(m1_x) * np.array(h_lines)[..., 1] + np.array(h_lines)[..., 0]
+                for i, j in [(0, 1), (1, 2), (2, 0)]]
+        m1_y = np.array(m1_x) * \
+            np.array(h_lines)[..., 1] + np.array(h_lines)[..., 0]
         m1_avg = np.array([np.average(m1_x), np.average(m1_y)])
         print(m1_avg)
-        v_lines = [np.polyfit(points[i, ..., 0], points[i, ..., 1], 1) for i in range(3)]
+        v_lines = [np.polyfit(points[i, ..., 0], points[i, ..., 1], 1)
+                   for i in range(3)]
 
-    def _next_step(self):      
+    def _next_step(self):
         input_pos = self.interface.get_input()
         deflection = vec_len(input_pos)
 
@@ -50,7 +51,7 @@ class CalibrationHelper:
 
         elif self.phase == 1:
             lastphase = self.subphase - 1
-            if self.subphase > 0:    
+            if self.subphase > 0:
                 x = int(lastphase // 3)
                 y = (lastphase % 3)
                 self.phase_1_points[x, y] = np.array(input_pos)
@@ -58,18 +59,18 @@ class CalibrationHelper:
             x = int(self.subphase // 3)
             y = (self.subphase % 3)
 
-
             self.subphase += 1
             if self.subphase > 9:
                 self._evaluate_phase_1()
                 self._advance()
             else:
-                self.step_1 = self.phase_1_center_1 + (x - 1) * self.phase_1_width
-                self.step_2 = self.phase_1_center_2 + (y - 1) * self.phase_1_width
+                self.step_1 = self.phase_1_center_1 + \
+                    (x - 1) * self.phase_1_width
+                self.step_2 = self.phase_1_center_2 + \
+                    (y - 1) * self.phase_1_width
 
         else:
             self.done = True
-
 
     def tick(self, tick_number):
         if self.done:
@@ -84,4 +85,4 @@ class CalibrationHelper:
 
     # def get_best_guess(self):
     #     m1 = StepperMotor()
-    #     return MechanicalDevice()
+    #     return VirtualDevice()

@@ -2,7 +2,6 @@ import numpy as np
 import pygame
 
 from mechbot.utils.vector_utils import vec_len, direction_vec
-from mechbot.controller.device import StepperMotor
 
 
 class MechanicalSimulator:
@@ -42,10 +41,10 @@ class MechanicalSimulator:
         dist = np.dot(normal_dir, self.stick_pos - motor.pos)
         dead_dist = self.gap - self.stick_r
         force = 0
-        if dist > dead_dist: # Touches edge
+        if dist > dead_dist:  # Touches edge
             # Normal force plus some correction for motion
             force = normal_force_mag + 6 * (dist + dead_dist)
-        elif dist < - dead_dist: # Toches other edge
+        elif dist < - dead_dist:  # Toches other edge
             force = normal_force_mag + 6 * (dist - dead_dist)
         return (-normal_dir * force)
 
@@ -72,13 +71,16 @@ class MechanicalSimulator:
         self.force_vec_1 = self._calculate_force(self.motor1)
         self.force_vec_2 = self._calculate_force(self.motor2)
 
-        self.stick_pos += dt * (self.force_vec_1 + self.force_vec_2 + self.center_force)
+        self.stick_pos += dt * (self.force_vec_1 +
+                                self.force_vec_2 + self.center_force)
         # self.stick_pos += dt * self.stick_vel
         # self.stick_vel *= .95
 
     def draw(self, screen, cam):
-        pygame.draw.circle(screen, (210, 210, 210), cam.pixel((0, 0)), cam.pixel_len(1), 3)
-        pygame.draw.circle(screen, (110, 110, 110), cam.pixel(self.stick_pos), cam.pixel_len(self.stick_r))
+        pygame.draw.circle(screen, (210, 210, 210),
+                           cam.pixel((0, 0)), cam.pixel_len(1), 3)
+        pygame.draw.circle(screen, (110, 110, 110), cam.pixel(
+            self.stick_pos), cam.pixel_len(self.stick_r))
 
         self.motor1.draw(screen, cam)
         self.motor1.draw_lines(screen, cam, self.gap)
@@ -86,8 +88,9 @@ class MechanicalSimulator:
         self.motor2.draw(screen, cam)
         self.motor2.draw_lines(screen, cam, self.gap)
 
-        pygame.draw.line(screen, (255, 0, 0), cam.pixel(self.stick_pos), cam.pixel(self.stick_pos + self.force_vec_1 * .2), 3)
-        pygame.draw.line(screen, (0, 255, 0), cam.pixel(self.stick_pos), cam.pixel(self.stick_pos + self.force_vec_2 * .2), 3)
-        pygame.draw.line(screen, (0, 0, 255), cam.pixel(self.stick_pos), cam.pixel(self.stick_pos + self.center_force * .2), 3)
-
-
+        pygame.draw.line(screen, (255, 0, 0), cam.pixel(
+            self.stick_pos), cam.pixel(self.stick_pos + self.force_vec_1 * .2), 3)
+        pygame.draw.line(screen, (0, 255, 0), cam.pixel(
+            self.stick_pos), cam.pixel(self.stick_pos + self.force_vec_2 * .2), 3)
+        pygame.draw.line(screen, (0, 0, 255), cam.pixel(
+            self.stick_pos), cam.pixel(self.stick_pos + self.center_force * .2), 3)

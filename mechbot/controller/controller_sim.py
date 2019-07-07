@@ -6,7 +6,7 @@ import pygame
 from mechbot.utils.vector_utils import vec_len
 from mechbot.utils import pygame_utils
 from mechbot.controller.simulator import MechanicalSimulator
-from mechbot.controller.device import MechanicalDevice, StepperMotor
+from mechbot.controller.device import VirtualDevice, StepperMotor
 from mechbot.controller.calibration import CalibrationHelper
 
 
@@ -30,9 +30,10 @@ debug = pygame_utils.LineWriter(10, 10)
 motor1 = StepperMotor((2., 2.), 200, 1, - 3 / 4 * np.pi)
 motor2 = StepperMotor((-2., 2.), 200, 1, - np.pi / 4)
 
-simulation = MechanicalSimulator(motor1, motor2, gap=.2, stick_r=.1, stick_force=.1)
+simulation = MechanicalSimulator(
+    motor1, motor2, gap=.2, stick_r=.1, stick_force=.1)
 
-mech_controller = MechanicalDevice(motor1, motor2, gap=.2, stick=.1)
+mech_controller = VirtualDevice(motor1, motor2, gap=.2, stick=.1)
 target = (0, 0)
 
 calibrator = CalibrationHelper(simulation.get_interface())
@@ -44,10 +45,12 @@ force_1_queue = deque(maxlen=30)
 force_2_queue = deque(maxlen=30)
 torque_points = []
 
+
 def record_torque():
     t1 = sum(force_1_queue) / len(force_1_queue)
     t2 = sum(force_2_queue) / len(force_2_queue)
     torque_points.append((tuple(simulation.stick_pos), t1, t2))
+
 
 collecting = False
 step_range = 7
@@ -63,12 +66,16 @@ while running:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_LEFT:
                 motor1.left()
+                simulation.move = False
             if event.key == pygame.K_RIGHT:
                 motor1.right()
+                simulation.move = False
             if event.key == pygame.K_UP:
                 motor2.left()
+                simulation.move = False
             if event.key == pygame.K_DOWN:
                 motor2.right()
+                simulation.move = False
             if event.key == pygame.K_p:
                 record_torque()
             if event.key == pygame.K_o:
@@ -77,7 +84,7 @@ while running:
                 running = False
         # Move target
         if event.type == pygame.MOUSEBUTTONUP:
-            target = cam.world_pos(pygame.mouse.get_pos())
+            target = camera.world_pos(pygame.mouse.get_pos())
             a, b = mech_controller.calculate_steps(target)
             simulation.cmd_goto(a, b)
 
@@ -97,7 +104,7 @@ while running:
 
     if tick_counter % 300 == 0 and collecting:
         record_torque()
-        simulation.cmd_goto(step1*2, step2*2)
+        simulation.cmd_goto(step1 * 2, step2 * 2)
         step1 += 1
         if step1 > step_range:
             step1 = -step_range
@@ -105,7 +112,9 @@ while running:
             if step2 > step_range:
                 collecting = False
 
-    calibrator.tick(tick_counter)
+    #calibrator.tick(tick_counter)
+
+    calculated_pos = mech_controller.calculate_cords(motor1.step, motor2.step)
 
     # DRAWING
     screen.fill((255, 255, 255))
@@ -119,7 +128,11 @@ while running:
         pygame.draw.circle(screen, c, camera.pixel(pos), r)
 
     simulation.draw(screen, camera)
-    pygame.draw.circle(screen, (110, 110, 200), camera.pixel(target), camera.pixel_len(.1), 2)
+    pygame.draw.circle(screen, (110, 110, 200), camera.pixel(
+        target), camera.pixel_len(.1), 2)
+
+    pygame.draw.circle(screen, (200, 110, 110), camera.pixel(
+        calculated_pos), camera.pixel_len(.11), 2)
 
     debug.draw(screen)
 
