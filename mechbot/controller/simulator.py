@@ -1,7 +1,7 @@
 import numpy as np
 import pygame
 
-from mechbot.utils.vector_utils import vec_len, direction_vec
+from mechbot.utils.vector_utils import vec_len, dir_vec
 
 
 class MechanicalSimulator:
@@ -29,13 +29,13 @@ class MechanicalSimulator:
         self.target2 = b
 
     def torque_on_motor(self, motor):
-        normal_dir = direction_vec(motor.get_angle() + np.pi / 2)
+        normal_dir = dir_vec(motor.get_angle() + np.pi / 2)
         normal_force_mag = np.dot(self.center_force, normal_dir)
         distance = vec_len(self.stick_pos - motor.pos)
         return distance * normal_force_mag
 
     def _calculate_force(self, motor):
-        normal_dir = direction_vec(motor.get_angle() + np.pi / 2)
+        normal_dir = dir_vec(motor.get_angle() + np.pi / 2)
         normal_force_mag = np.dot(self.center_force, normal_dir)
         # distance from middle line, used for gap calculation
         dist = np.dot(normal_dir, self.stick_pos - motor.pos)

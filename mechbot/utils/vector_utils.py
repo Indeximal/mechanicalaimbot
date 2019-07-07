@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def direction_vec(angle):
+def dir_vec(angle):
     return np.array([np.cos(angle), np.sin(angle)])
 
 
