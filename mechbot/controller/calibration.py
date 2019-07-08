@@ -6,8 +6,10 @@ from mechbot.utils.vector_utils import vec_len
 
 
 class CalibrationHelper:
-    def __init__(self, interface, wait_duration=70, phase_1_deflection=.5):
+    def __init__(self, interface, initial_device, wait_duration=70,
+                 phase_1_deflection=.5):
         self.interface = interface
+        self.device = initial_device
         self.step_1 = 0
         self.step_2 = 0
         self.phase = 0
@@ -15,6 +17,59 @@ class CalibrationHelper:
         self.done = False
         self.wait_duration = wait_duration
         self.phase_1_deflection = phase_1_deflection
+
+    # def _loss(self, pos1, pos2):
+    #     return vec_len(pos1 - pos2)
+
+    def _gradient_descent_step(self, step1, step2, input_pos,
+                               dx=.01, dphi=.05, dgap=.01, epsilon=0.005):
+        # Function to maximize
+        def calc_loss():
+            predicted_pos = self.device.calculate_cords(step1, step2)
+            return - vec_len(predicted_pos - input_pos)
+
+        # Baseline loss
+        loss_0 = calc_loss()
+
+        # Calculate the change in Loss for each property numerically
+        self.device.motor1.pos[0] += dx
+        dL_x1 = calc_loss() - loss_0
+        self.device.motor1.pos[0] -= dx
+
+        self.device.motor1.pos[1] += dx
+        dL_y1 = calc_loss() - loss_0
+        self.device.motor1.pos[1] -= dx
+
+        self.device.motor2.pos[0] += dx
+        dL_x2 = calc_loss() - loss_0
+        self.device.motor2.pos[0] -= dx
+
+        self.device.motor2.pos[1] += dx
+        dL_y2 = calc_loss() - loss_0
+        self.device.motor2.pos[1] -= dx
+
+        self.device.motor1.align += dphi
+        dL_phi1 = calc_loss() - loss_0
+        self.device.motor1.align -= dphi
+
+        self.device.motor2.align += dphi
+        dL_phi2 = calc_loss() - loss_0
+        self.device.motor2.align -= dphi
+
+        self.device.gap += dgap
+        dL_gap = calc_loss() - loss_0
+        self.device.gap -= dgap
+
+        # Make a step in the direction of the gradient
+        self.device.motor1.pos[0] += dL_x1 / dx * epsilon
+        self.device.motor1.pos[1] += dL_y1 / dx * epsilon
+        self.device.motor2.pos[0] += dL_x2 / dx * epsilon
+        self.device.motor2.pos[1] += dL_y2 / dx * epsilon
+        self.device.motor1.align += dL_phi1 / dphi * epsilon
+        self.device.motor2.align += dL_phi2 / dphi * epsilon
+        self.device.gap += dL_gap / dgap * epsilon
+
+        return calc_loss()
 
     def _advance(self):
         self.phase += 1
@@ -83,6 +138,5 @@ class CalibrationHelper:
     def is_done(self):
         return self.done
 
-    # def get_best_guess(self):
-    #     m1 = StepperMotor()
-    #     return VirtualDevice()
+    def get_best_guess(self):
+        return self.device
