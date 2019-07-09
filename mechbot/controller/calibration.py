@@ -23,8 +23,15 @@ class CalibrationHelper:
         self.examples.append((pos, step1, step2))
 
     def gradient_descent_step(self, epsilon):
-        gradient = self._calculate_gradient(self.examples)
+        gradient = self._calculate_gradient()
         self._apply_gradient(gradient, epsilon)
+
+    # Function to minimize
+    def calc_loss(self):
+        total = 0
+        for pos, s1, s2 in self.examples:
+            total += vec_len(self.device.calculate_cords(s1, s2) - pos)
+        return total / len(self.examples)
 
     def _apply_gradient(self, gradient, epsilon=0.0001):
         g_x1, g_y1, g_x2, g_y2, g_phi1, g_phi2, g_gap = gradient
@@ -38,44 +45,38 @@ class CalibrationHelper:
         self.device.motor2.align -= g_phi2 * epsilon
         self.device.gap -= g_gap * epsilon
 
-    def _calculate_gradient(self, examples,
-                            dx=.01, dphi=.02, dgap=.001):
-        # Function to maximize
-        def calc_loss():
-            total = 0
-            for pos, s1, s2 in examples:
-                total += vec_len(self.device.calculate_cords(s1, s2) - pos)
+    def _calculate_gradient(self, dx=.0001, dphi=.0001, dgap=.00001):
 
         # Baseline loss
-        loss_0 = calc_loss()
+        loss_0 = self.calc_loss()
 
         # Calculate the change in Loss for each property numerically
         self.device.motor1.pos[0] += dx
-        dL_x1 = calc_loss() - loss_0
+        dL_x1 = self.calc_loss() - loss_0
         self.device.motor1.pos[0] -= dx
 
         self.device.motor1.pos[1] += dx
-        dL_y1 = calc_loss() - loss_0
+        dL_y1 = self.calc_loss() - loss_0
         self.device.motor1.pos[1] -= dx
 
         self.device.motor2.pos[0] += dx
-        dL_x2 = calc_loss() - loss_0
+        dL_x2 = self.calc_loss() - loss_0
         self.device.motor2.pos[0] -= dx
 
         self.device.motor2.pos[1] += dx
-        dL_y2 = calc_loss() - loss_0
+        dL_y2 = self.calc_loss() - loss_0
         self.device.motor2.pos[1] -= dx
 
         self.device.motor1.align += dphi
-        dL_phi1 = calc_loss() - loss_0
+        dL_phi1 = self.calc_loss() - loss_0
         self.device.motor1.align -= dphi
 
         self.device.motor2.align += dphi
-        dL_phi2 = calc_loss() - loss_0
+        dL_phi2 = self.calc_loss() - loss_0
         self.device.motor2.align -= dphi
 
         self.device.gap += dgap
-        dL_gap = calc_loss() - loss_0
+        dL_gap = self.calc_loss() - loss_0
         self.device.gap -= dgap
 
         return [dL_x1 / dx, dL_y1 / dx, dL_x2 / dx, dL_y2 / dx,
