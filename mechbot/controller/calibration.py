@@ -17,16 +17,34 @@ class CalibrationHelper:
         self.done = False
         self.wait_duration = wait_duration
         self.phase_1_deflection = phase_1_deflection
+        self.examples = []
 
-    # def _loss(self, pos1, pos2):
-    #     return vec_len(pos1 - pos2)
+    def add_example(self, step1, step2, pos):
+        self.examples.append((pos, step1, step2))
 
-    def _gradient_descent_step(self, step1, step2, input_pos,
-                               dx=.01, dphi=.05, dgap=.01, epsilon=0.005):
+    def gradient_descent_step(self, epsilon):
+        gradient = self._calculate_gradient(self.examples)
+        self._apply_gradient(gradient, epsilon)
+
+    def _apply_gradient(self, gradient, epsilon=0.0001):
+        g_x1, g_y1, g_x2, g_y2, g_phi1, g_phi2, g_gap = gradient
+
+        # Make a step in the direction of the gradient
+        self.device.motor1.pos[0] -= g_x1 * epsilon
+        self.device.motor1.pos[1] -= g_y1 * epsilon
+        self.device.motor2.pos[0] -= g_x2 * epsilon
+        self.device.motor2.pos[1] -= g_y2 * epsilon
+        self.device.motor1.align -= g_phi1 * epsilon
+        self.device.motor2.align -= g_phi2 * epsilon
+        self.device.gap -= g_gap * epsilon
+
+    def _calculate_gradient(self, examples,
+                            dx=.01, dphi=.02, dgap=.001):
         # Function to maximize
         def calc_loss():
-            predicted_pos = self.device.calculate_cords(step1, step2)
-            return - vec_len(predicted_pos - input_pos)
+            total = 0
+            for pos, s1, s2 in examples:
+                total += vec_len(self.device.calculate_cords(s1, s2) - pos)
 
         # Baseline loss
         loss_0 = calc_loss()
@@ -60,16 +78,8 @@ class CalibrationHelper:
         dL_gap = calc_loss() - loss_0
         self.device.gap -= dgap
 
-        # Make a step in the direction of the gradient
-        self.device.motor1.pos[0] += dL_x1 / dx * epsilon
-        self.device.motor1.pos[1] += dL_y1 / dx * epsilon
-        self.device.motor2.pos[0] += dL_x2 / dx * epsilon
-        self.device.motor2.pos[1] += dL_y2 / dx * epsilon
-        self.device.motor1.align += dL_phi1 / dphi * epsilon
-        self.device.motor2.align += dL_phi2 / dphi * epsilon
-        self.device.gap += dL_gap / dgap * epsilon
-
-        return calc_loss()
+        return [dL_x1 / dx, dL_y1 / dx, dL_x2 / dx, dL_y2 / dx,
+                dL_phi1 / dphi, dL_phi2 / dphi, dL_gap / dgap]
 
     def _advance(self):
         self.phase += 1
