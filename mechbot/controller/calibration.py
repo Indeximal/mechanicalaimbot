@@ -3,13 +3,17 @@ from collections import deque
 
 import numpy as np
 
-from mechbot.utils.vector_utils import vec_len
-
-# from mechbot.controller.simulator import MechanicalSimulator
+from mechbot.utils.vector_utils import vec_len, dir_vec
+# from mechbot.controller.device import StepperMotor, VirtualDevice
 
 
 class NotReadyError(Exception):
     pass
+
+
+class LogicError(Exception):
+    def __init__(self, message):
+        Exception.__init__(self, message)
 
 
 class MovementStateEnum:
@@ -22,8 +26,8 @@ class MoveController:
     def __init__(self, interface):
         # Settings
         self.motion_threshold = .05  # units
-        self.motion_path = deque(maxlen=20)  # ticks
-        self.wait_duration = .7  # seconds
+        self.motion_path = deque(maxlen=30)  # ticks
+        self.wait_duration = .5  # seconds
 
         self.interface = interface
         self.move_state = MovementStateEnum.Idle
@@ -75,6 +79,8 @@ class CalibrationStateEnum:
     M1_Prepare = 1
     M1_Gather = 2
     M2_Prepare = 3
+    M2_Gather = 4
+    Done = 5
 
 
 class CalibrationHelper(MoveController):
@@ -83,27 +89,88 @@ class CalibrationHelper(MoveController):
         # Init
         MoveController.__init__(self, interface)
         self.m1_points = []
+        self.m2_points = []
         # Settings
         self.max_deflection = .3
 
-    def _get_deflection(self):
-        return vec_len(self.interface.get_input())
+    def compute_guess(self, steps):
+        motors = []
+
+        dphi = 2 * np.pi / steps
+
+        for data in [self.m1_points, self.m2_points]:
+            points = np.array([p for _, p in data])
+            xs = points[..., 0]
+            ys = points[..., 1]
+            line = np.polyfit(xs, ys, 1)
+            align = np.arctan(line[0]) + np.pi / 2
+
+            direction = dir_vec(align)
+            orientation_first = np.sign(np.dot(direction, points[0]))
+            orientation_last = np.sign(np.dot(direction, points[-1]))
+            if orientation_first != orientation_last:
+                raise LogicError("The first and last point contradict!")
+            # Flip the motor according to curvature of the points
+            if orientation_first == -1:
+                align += np.pi
+                direction *= -1
+
+            perpendicular_vec = dir_vec(align + np.pi / 2)
+
+            # Compute the avg distances between two non-center-steps
+            non_zero_points = [p for p in points if vec_len(p) > .01]
+            distances = []
+            point_gap = 0
+            for vec in [perpendicular_vec, -perpendicular_vec]:
+                ps = [p for p in non_zero_points if np.dot(p, vec) < 0]
+                if len(ps) < 2:
+                    raise LogicError("Not enough points away from the center!")
+                distances += [vec_len(p - q) for p, q in zip(ps[1:], ps[:-1])]
+                smallest_dist_to_center = min(ps, key=lambda p: vec_len(p))
+                point_gap += vec_len(smallest_dist_to_center)
+            dist = sum(distances) / len(distances)
+
+            # Use that to compute the radius away from the motor
+            radius = dist / (2 * np.sin(dphi / 2))
+            position = - direction * radius
+
+            theorectial_gap = (len(points) - len(non_zero_points)) * (dist + 1)
+
+            gap = theorectial_gap - point_gap
+
+            motors.append((align, position, gap))
+
+        return motors
 
     def _act(self):
+        # Function for evaluation
         def reaction(steps, pos, t):
             over_deflection = vec_len(pos) > self.max_deflection
 
             if self.state == CalibrationStateEnum.M1_Prepare:
+                # Extended enough
                 if over_deflection:
                     self.state = CalibrationStateEnum.M1_Gather
 
             if self.state == CalibrationStateEnum.M1_Gather:
+                # Gather points on the circle for later use
                 self.m1_points.append((steps[0], pos))
                 if self.step_1 < 0 and over_deflection:
                     self.state = CalibrationStateEnum.M2_Prepare
 
+            if self.state == CalibrationStateEnum.M2_Prepare:
+                if self.step_2 > 0 and over_deflection:
+                    self.state = CalibrationStateEnum.M2_Gather
+
+            if self.state == CalibrationStateEnum.M2_Gather:
+                # Gather points on the circle for later use
+                self.m2_points.append((steps[1], pos))
+                if self.step_2 < 0 and over_deflection:
+                    self.state = CalibrationStateEnum.Done
+
             self._act()
 
+        # Movements
         if self.state == CalibrationStateEnum.M1_Prepare:
             self.step_1 += 1
             self.move_to(self.step_1, 0, reaction)
@@ -111,6 +178,14 @@ class CalibrationHelper(MoveController):
         if self.state == CalibrationStateEnum.M1_Gather:
             self.step_1 -= 1
             self.move_to(self.step_1, 0, reaction)
+
+        if self.state == CalibrationStateEnum.M2_Prepare:
+            self.step_2 += 1
+            self.move_to(0, self.step_2, reaction)
+
+        if self.state == CalibrationStateEnum.M2_Gather:
+            self.step_2 -= 1
+            self.move_to(0, self.step_2, reaction)
 
     def start(self):
         self.state = CalibrationStateEnum.M1_Prepare

@@ -128,6 +128,9 @@ while running:
     for _, pos in calibrator.m1_points:
         pygame.draw.circle(screen, (0, 0, 0), camera.pixel(pos), 4, 2)
 
+    for _, pos in calibrator.m2_points:
+        pygame.draw.circle(screen, (0, 0, 0), camera.pixel(pos), 4, 2)
+
     # Mechanics
     simulation.draw(screen, camera)
 
