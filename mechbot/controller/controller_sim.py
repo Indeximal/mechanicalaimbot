@@ -27,44 +27,25 @@ clock = pygame.time.Clock()
 debug = pygame_utils.LineWriter(10, 10)
 
 # SIMULATION INIT
-motor1 = StepperMotor((2., 2.), 200, 1, - 3 / 4 * np.pi)
-motor2 = StepperMotor((-2., 2.), 200, 1, - np.pi / 4)
+motor1 = StepperMotor((2., 2.), 200, 1, None)
+motor2 = StepperMotor((-2., 2.), 200, 1, None)
+motor1.align = np.arctan2(-motor1.pos[1], -motor1.pos[0])
+motor2.align = np.arctan2(-motor2.pos[1], -motor2.pos[0])
 
 simulation = MechanicalSimulator(
-    motor1, motor2, gap=.2, stick_r=.1, stick_force=.1)
+    motor1, motor2, gap=.2, stick_r=.1, stick_force=.099)
 
 mech_controller = VirtualDevice(motor1, motor2, gap=.2, stick=.1)
 target = (0, 0)
 
-# initial_motor_1 = StepperMotor((1.8, 2.1), 200, 1, -2.51)
-# initial_motor_2 = StepperMotor((-2.2, 1.94), 200, 1, -0.65)
-# initial_device = VirtualDevice(initial_motor_1, initial_motor_2, .14, 0.)
-
 calibrator = CalibrationHelper(simulation.get_interface())
 
-# calibration_points = []
 
 tick_counter = 0
 
 path = deque(maxlen=250)
 force_1_queue = deque(maxlen=30)
 force_2_queue = deque(maxlen=30)
-
-
-# def record_calibration_point():
-#     point = (simulation.get_input(), motor1.step, motor2.step)
-#     calibration_points.append(point)
-#     calibrator.add_example(motor1.step, motor2.step, simulation.get_input())
-
-
-# def calibrate():
-#     epsilon = 0.1
-#     for epoch in range(50):
-#         calibrator.gradient_descent_step(epsilon)
-#         loss = calibrator.calc_loss()
-#         if loss < .1:
-#             epsilon = 0.01
-#         print(epoch, loss, initial_motor_1.pos, initial_motor_2.pos)
 
 
 #  MAIN LOOP
@@ -86,12 +67,10 @@ while running:
             if event.key == pygame.K_DOWN:
                 motor2.left()
                 simulation.move = False
-            # if event.key == pygame.K_p:
-            #     record_calibration_point()
+            if event.key == pygame.K_p:
+                print(calibrator.compute_guess(motor1.steps))
             if event.key == pygame.K_c:
                 calibrator.start()
-            # if event.key == pygame.K_o:
-            #     print(calibration_points)
             if event.key == pygame.K_ESCAPE:
                 running = False
         # Move target

@@ -26,8 +26,8 @@ class MoveController:
     def __init__(self, interface):
         # Settings
         self.motion_threshold = .05  # units
-        self.motion_path = deque(maxlen=30)  # ticks
-        self.wait_duration = .5  # seconds
+        self.motion_path = deque(maxlen=20)  # ticks
+        self.wait_duration = .4  # seconds
 
         self.interface = interface
         self.move_state = MovementStateEnum.Idle
@@ -85,6 +85,7 @@ class CalibrationStateEnum:
 
 class CalibrationHelper(MoveController):
     """This class takes controll of an interface to approximate the device"""
+
     def __init__(self, interface):
         # Init
         MoveController.__init__(self, interface)
@@ -92,6 +93,7 @@ class CalibrationHelper(MoveController):
         self.m2_points = []
         # Settings
         self.max_deflection = .3
+        self.center_threshold = .05
 
     def compute_guess(self, steps):
         motors = []
@@ -111,14 +113,15 @@ class CalibrationHelper(MoveController):
             if orientation_first != orientation_last:
                 raise LogicError("The first and last point contradict!")
             # Flip the motor according to curvature of the points
-            if orientation_first == -1:
-                align += np.pi
+            if orientation_first == 1:
+                align -= np.pi
                 direction *= -1
 
             perpendicular_vec = dir_vec(align + np.pi / 2)
 
             # Compute the avg distances between two non-center-steps
-            non_zero_points = [p for p in points if vec_len(p) > .01]
+            non_zero_points = [p for p in points if vec_len(
+                p) > self.center_threshold]
             distances = []
             point_gap = 0
             for vec in [perpendicular_vec, -perpendicular_vec]:
@@ -134,9 +137,10 @@ class CalibrationHelper(MoveController):
             radius = dist / (2 * np.sin(dphi / 2))
             position = - direction * radius
 
-            theorectial_gap = (len(points) - len(non_zero_points)) * (dist + 1)
+            theorectial_gap = (len(points) - len(non_zero_points) + 1) * dist
 
-            gap = theorectial_gap - point_gap
+            # Full gap is the missing distance, but convention: half gap
+            gap = (theorectial_gap - point_gap) / 2
 
             motors.append((align, position, gap))
 
@@ -192,6 +196,9 @@ class CalibrationHelper(MoveController):
         self.step_1 = 0
         self.step_2 = 0
         self._act()
+
+    def is_done(self):
+        return self.state == CalibrationStateEnum.Done
 
 
 class GradientDescentHelper:
