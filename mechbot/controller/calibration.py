@@ -4,7 +4,7 @@ from collections import deque
 import numpy as np
 
 from mechbot.utils.vector_utils import vec_len, dir_vec
-# from mechbot.controller.device import StepperMotor, VirtualDevice
+from mechbot.controller.device import StepperMotor, VirtualDevice
 
 
 class NotReadyError(Exception):
@@ -25,7 +25,7 @@ class MovementStateEnum:
 class MoveController:
     def __init__(self, interface):
         # Settings
-        self.motion_threshold = .05  # units
+        self.motion_threshold = .03  # units
         self.motion_path = deque(maxlen=20)  # ticks
         self.wait_duration = .4  # seconds
 
@@ -80,25 +80,33 @@ class CalibrationStateEnum:
     M1_Gather = 2
     M2_Prepare = 3
     M2_Gather = 4
-    Done = 5
+    Gather_Circle = 5
+    Done = 7
 
 
 class CalibrationHelper(MoveController):
     """This class takes controll of an interface to approximate the device"""
 
-    def __init__(self, interface):
+    def __init__(self, interface, motor_steps):
         # Init
         MoveController.__init__(self, interface)
         self.m1_points = []
         self.m2_points = []
+        self.circle_points = []
+        self.motor_steps = motor_steps
         # Settings
         self.max_deflection = .3
         self.center_threshold = .05
+        self.circle_1_radius = .8
+        self.circle_2_radius = .45
+        self.angular_step_1 = .4
+        self.angular_step_2 = .8
 
-    def compute_guess(self, steps):
+    def compute_guess(self):
         motors = []
+        gap = 0.
 
-        dphi = 2 * np.pi / steps
+        dphi = 2 * np.pi / self.motor_steps
 
         for data in [self.m1_points, self.m2_points]:
             points = np.array([p for _, p in data])
@@ -140,11 +148,14 @@ class CalibrationHelper(MoveController):
             theorectial_gap = (len(points) - len(non_zero_points) + 1) * dist
 
             # Full gap is the missing distance, but convention: half gap
-            gap = (theorectial_gap - point_gap) / 2
+            gap += (theorectial_gap - point_gap) / 2
 
-            motors.append((align, position, gap))
+            motor = StepperMotor(position, self.motor_steps, 1, align)
+            motors.append(motor)
 
-        return motors
+        gap /= 2
+
+        return VirtualDevice(motors[0], motors[1], gap + .1, .1)
 
     def _act(self):
         # Function for evaluation
@@ -157,7 +168,7 @@ class CalibrationHelper(MoveController):
                     self.state = CalibrationStateEnum.M1_Gather
 
             if self.state == CalibrationStateEnum.M1_Gather:
-                # Gather points on the circle for later use
+                # Gather floating points initial guess
                 self.m1_points.append((steps[0], pos))
                 if self.step_1 < 0 and over_deflection:
                     self.state = CalibrationStateEnum.M2_Prepare
@@ -167,9 +178,19 @@ class CalibrationHelper(MoveController):
                     self.state = CalibrationStateEnum.M2_Gather
 
             if self.state == CalibrationStateEnum.M2_Gather:
-                # Gather points on the circle for later use
+                # Gather floating points initial guess
                 self.m2_points.append((steps[1], pos))
                 if self.step_2 < 0 and over_deflection:
+                    self.device_guess = self.compute_guess()
+                    self.state = CalibrationStateEnum.Gather_Circle
+
+            if self.state == CalibrationStateEnum.Gather_Circle:
+                # Gather points on a cirlce for gradient descent
+                self.circle_points.append((pos, steps[0], steps[1]))
+                if self.angle > 2 * np.pi:
+                    self.circle_radius = self.circle_2_radius
+                    self.angular_step = self.angular_step_2
+                if self.angle > 4 * np.pi:
                     self.state = CalibrationStateEnum.Done
 
             self._act()
@@ -191,10 +212,20 @@ class CalibrationHelper(MoveController):
             self.step_2 -= 1
             self.move_to(0, self.step_2, reaction)
 
+        if self.state == CalibrationStateEnum.Gather_Circle:
+            # Move to a points on a circle
+            position = dir_vec(self.angle) * self.circle_radius
+            s1, s2 = self.device_guess.calculate_steps(position)
+            self.move_to(s1, s2, reaction)
+            self.angle += self.angular_step
+
     def start(self):
         self.state = CalibrationStateEnum.M1_Prepare
         self.step_1 = 0
         self.step_2 = 0
+        self.angle = 0
+        self.circle_radius = self.circle_1_radius
+        self.angular_step = self.angular_step_1
         self._act()
 
     def is_done(self):

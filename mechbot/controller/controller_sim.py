@@ -37,7 +37,7 @@ simulation = MechanicalSimulator(mech_device, stick_force=.099)
 
 target = (0, 0)
 
-calibrator = CalibrationHelper(simulation.get_interface())
+calibrator = CalibrationHelper(simulation.get_interface(), motor1.steps)
 
 
 tick_counter = 0
@@ -67,7 +67,7 @@ while running:
                 motor2.left()
                 simulation.move = False
             if event.key == pygame.K_p:
-                print(calibrator.compute_guess(motor1.steps))
+                print(calibrator.compute_guess())
             if event.key == pygame.K_c:
                 calibrator.start()
             if event.key == pygame.K_ESCAPE:
@@ -105,8 +105,9 @@ while running:
 
     for _, pos in calibrator.m1_points:
         pygame.draw.circle(screen, (0, 0, 0), camera.pixel(pos), 4, 2)
-
     for _, pos in calibrator.m2_points:
+        pygame.draw.circle(screen, (0, 0, 0), camera.pixel(pos), 4, 2)
+    for pos, _, _ in calibrator.circle_points:
         pygame.draw.circle(screen, (0, 0, 0), camera.pixel(pos), 4, 2)
 
     # Mechanics
