@@ -1,3 +1,6 @@
+import time
+from collections import deque
+
 import numpy as np
 
 from mechbot.utils.vector_utils import vec_len
@@ -5,18 +8,90 @@ from mechbot.utils.vector_utils import vec_len
 # from mechbot.controller.simulator import MechanicalSimulator
 
 
-class CalibrationHelper:
-    def __init__(self, interface, initial_device, wait_duration=70,
-                 phase_1_deflection=.5):
+class NotReadyError(Exception):
+    pass
+
+
+class MovementStateEnum:
+    Idle = 1
+    Waiting = 2
+    Moving = 3
+
+
+class MoveController:
+    def __init__(self, interface):
+        # Settings
+        self.motion_threshold = .05
+        self.motion_path = deque(maxlen=3)
+        self.wait_duration = 1.
+
         self.interface = interface
-        self.device = initial_device
-        self.step_1 = 0
-        self.step_2 = 0
-        self.phase = 0
+        self.move_state = MovementStateEnum.Idle
+
+    def move_to(self, s1, s2, callback):
+        if self.move_state != MovementStateEnum.Idle:
+            raise NotReadyError()
+
+        self.initial_pos = self.interface.get_input()
+        self.initial_time = time.time()
+        self.callback = callback
+        self.steps = (s1, s2)
+        self.interface.cmd_goto(s1, s2)
+        self.move_state = MovementStateEnum.Waiting
+
+    def _finish(self):
+        self.callback(self.steps, pos, time.time() - self.initial_time)
+        self.move_state = MovementStateEnum.Idle
+
+    def tick(self):
+        # Don't do anything while in idle
+        if self.move_state == MovementStateEnum.Idle:
+            return
+
+        pos = self.interface.get_input()
+        if self.move_state == MovementStateEnum.Waiting:
+            diff = vec_len(pos - self.initial_pos)
+            # Has the stick moved?
+            if diff > self.motion_threshold:
+                self.move_state = MovementStateEnum.Moving
+                self.motion_path.clear()
+            # Has too much time passed?
+            if (time.time() - self.initial_time) > self.wait_duration:
+                self._finish()
+
+        if self.move_state == MovementStateEnum.Moving:
+            self.motion_path.append(pos)
+            if len(self.motion_path) == self.motion_path.maxlen:
+                # Minimal time waited
+                diff = vec_len(self.motion_path[0] - self.motion_path[-1])
+                if diff < self.motion_threshold:
+                    # Stick is motionless
+                    self._finish()
+
+
+class CalibrationStateEnum:
+    M1_prepare = 1
+    M1_gather = 2
+
+
+class CalibrationHelper(MoveController):
+    def __init__(self, interface, wait_duration=70,
+                 max_deflection=.2):
+        super(CalibrationHelper, self).__init__(interface)
+
+        # self.device = initial_device
+        self.step_1 = None
+        self.step_2 = None
+        self.phase = "m1_pos"
         self.subphase = 0
         self.done = False
+        self.next_action = time.time()
+        self.m1_points = []
+        self.last_pos = interface.get_input()
+        self.motion_threshold = .05
+
         self.wait_duration = wait_duration
-        self.phase_1_deflection = phase_1_deflection
+        self.max_deflection = max_deflection
         self.examples = []
 
     def add_example(self, step1, step2, pos):
@@ -82,69 +157,37 @@ class CalibrationHelper:
         return [dL_x1 / dx, dL_y1 / dx, dL_x2 / dx, dL_y2 / dx,
                 dL_phi1 / dphi, dL_phi2 / dphi, dL_gap / dgap]
 
-    def _advance(self):
-        self.phase += 1
-        self.subphase = 0
-
-    def _evaluate_phase_1(self):
-        points = np.array(self.phase_1_points)
-        print(points)
-        h_lines = [np.polyfit(points[..., i, 0], points[..., i, 1], 1)
-                   for i in range(3)]
-        m1_x = [(h_lines[i][0] - h_lines[j][0]) / (h_lines[i][1] - h_lines[j][1])
-                for i, j in [(0, 1), (1, 2), (2, 0)]]
-        m1_y = np.array(m1_x) * \
-            np.array(h_lines)[..., 1] + np.array(h_lines)[..., 0]
-        m1_avg = np.array([np.average(m1_x), np.average(m1_y)])
-        print(m1_avg)
-        v_lines = [np.polyfit(points[i, ..., 0], points[i, ..., 1], 1)
-                   for i in range(3)]
-
-    def _next_step(self):
+    def _act_old(self):
         input_pos = self.interface.get_input()
         deflection = vec_len(input_pos)
 
-        if self.phase == 0:
-            if deflection < self.phase_1_deflection:
+        if self.phase == "m1_pos":
+            if self.step_1 is not None:
+                self.m1_points.append((self.step_1, input_pos))
                 self.step_1 += 1
-                self.step_2 += 1
             else:
-                self._advance()
-                self.phase_1_center_1 = self.step_1
-                self.phase_1_center_2 = self.step_2
-                self.phase_1_width = int(self.phase_1_center_1 / 3)
-                self.phase_1_points = np.zeros((3, 3, 2))
+                self.step_1 = 0
 
-        elif self.phase == 1:
-            lastphase = self.subphase - 1
-            if self.subphase > 0:
-                x = int(lastphase // 3)
-                y = (lastphase % 3)
-                self.phase_1_points[x, y] = np.array(input_pos)
+            if deflection < self.max_deflection:
+                self.interface.cmd_goto(self.step_1, 0)
 
-            x = int(self.subphase // 3)
-            y = (self.subphase % 3)
-
-            self.subphase += 1
-            if self.subphase > 9:
-                self._evaluate_phase_1()
-                self._advance()
             else:
-                self.step_1 = self.phase_1_center_1 + \
-                    (x - 1) * self.phase_1_width
-                self.step_2 = self.phase_1_center_2 + \
-                    (y - 1) * self.phase_1_width
+                self.interface.cmd_goto(0, 0)
+                self.phase == "m1_neg"
+        elif self.phase == "m1_neg":
+            if self.step_1 is not None:
+                self.m1_points.append((self.step_1, input_pos))
+                self.step_1 += 1
+            else:
+                self.step_1 = 0
 
+            if deflection < self.max_deflection:
+                self.interface.cmd_goto(self.step_1, 0)
+            else:
+                self.phase == "m1_neg"
         else:
             self.done = True
 
-    def tick(self, tick_number):
-        if self.done:
-            return
-
-        if tick_number % self.wait_duration == 0:
-            self._next_step()
-            self.interface.cmd_goto(self.step_1, self.step_2)
 
     def is_done(self):
         return self.done
