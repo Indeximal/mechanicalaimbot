@@ -5,19 +5,16 @@ from mechbot.utils.vector_utils import vec_len, dir_vec
 
 
 class MechanicalSimulator:
-    def __init__(self, motor1, motor2, gap, stick_r, stick_force):
-        self.motor1 = motor1
-        self.motor2 = motor2
-        self.gap = gap
-        self.stick_r = stick_r
+    def __init__(self, device, stick_force):
+        self.device = device
         self.stick_force = stick_force
         self.stick_pos = np.array([0., 0.])
-        # self.stick_vel = np.array([0., 0.])
         self.target1 = 0
         self.target2 = 0
         self.move = False
 
     def get_interface(self):
+        """returns an object with the methods get_input and cmd_goto"""
         return self
 
     def get_input(self):
@@ -39,7 +36,7 @@ class MechanicalSimulator:
         normal_force_mag = np.dot(self.center_force, normal_dir)
         # distance from middle line, used for gap calculation
         dist = np.dot(normal_dir, self.stick_pos - motor.pos)
-        dead_dist = self.gap - self.stick_r
+        dead_dist = self.device.gap - self.device.stick
         force = 0
         if dist > dead_dist:  # Touches edge
             # Normal force plus some correction for motion
@@ -51,14 +48,14 @@ class MechanicalSimulator:
     def loop(self):
         # Step motors, normally done on arduino
         if self.move:
-            if self.motor1.step < self.target1:
-                self.motor1.left()
-            elif self.motor1.step > self.target1:
-                self.motor1.right()
-            if self.motor2.step < self.target2:
-                self.motor2.left()
-            elif self.motor2.step > self.target2:
-                self.motor2.right()
+            if self.device.motor1.step < self.target1:
+                self.device.motor1.left()
+            elif self.device.motor1.step > self.target1:
+                self.device.motor1.right()
+            if self.device.motor2.step < self.target2:
+                self.device.motor2.left()
+            elif self.device.motor2.step > self.target2:
+                self.device.motor2.right()
 
     def tick(self, dt):
         # Update stick position
@@ -67,27 +64,21 @@ class MechanicalSimulator:
             self.center_force = - 1 * self.stick_pos / vec_len(self.stick_pos)
 
         # Calculate normal force on the stick
-        # TODO: calcucalte physical normal force
-        self.force_vec_1 = self._calculate_force(self.motor1)
-        self.force_vec_2 = self._calculate_force(self.motor2)
+        self.force_vec_1 = self._calculate_force(self.device.motor1)
+        self.force_vec_2 = self._calculate_force(self.device.motor2)
 
         self.stick_pos += dt * (self.force_vec_1 +
                                 self.force_vec_2 + self.center_force)
-        # self.stick_pos += dt * self.stick_vel
-        # self.stick_vel *= .95
 
     def draw(self, screen, cam):
-        pygame.draw.circle(screen, (210, 210, 210),
-                           cam.pixel((0, 0)), cam.pixel_len(1), 3)
+        # Draw motors
+        self.device.draw(screen, cam)
+
+        # Draw stick
         pygame.draw.circle(screen, (110, 110, 110), cam.pixel(
-            self.stick_pos), cam.pixel_len(self.stick_r))
+            self.stick_pos), cam.pixel_len(self.device.stick))
 
-        self.motor1.draw(screen, cam)
-        self.motor1.draw_lines(screen, cam, self.gap)
-
-        self.motor2.draw(screen, cam)
-        self.motor2.draw_lines(screen, cam, self.gap)
-
+        # Draw forces
         pygame.draw.line(screen, (255, 0, 0), cam.pixel(
             self.stick_pos), cam.pixel(self.stick_pos + self.force_vec_1 * .2), 3)
         pygame.draw.line(screen, (0, 255, 0), cam.pixel(

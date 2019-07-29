@@ -31,11 +31,10 @@ motor1 = StepperMotor((2., 2.), 200, 1, None)
 motor2 = StepperMotor((-2., 2.), 200, 1, None)
 motor1.align = np.arctan2(-motor1.pos[1], -motor1.pos[0])
 motor2.align = np.arctan2(-motor2.pos[1], -motor2.pos[0])
+mech_device = VirtualDevice(motor1, motor2, gap=.2, stick=.1)
 
-simulation = MechanicalSimulator(
-    motor1, motor2, gap=.2, stick_r=.1, stick_force=.099)
+simulation = MechanicalSimulator(mech_device, stick_force=.099)
 
-mech_controller = VirtualDevice(motor1, motor2, gap=.2, stick=.1)
 target = (0, 0)
 
 calibrator = CalibrationHelper(simulation.get_interface())
@@ -76,7 +75,7 @@ while running:
         # Move target
         if event.type == pygame.MOUSEBUTTONUP:
             target = camera.world_pos(pygame.mouse.get_pos())
-            a, b = mech_controller.calculate_steps(target)
+            a, b = mech_device.calculate_steps(target)
             simulation.cmd_goto(a, b)
 
     # CALCULATIONS
@@ -94,7 +93,7 @@ while running:
     debug.print("1: {:.2f}".format(sum(force_1_queue) / len(force_1_queue)))
     debug.print("2: {:.2f}".format(sum(force_2_queue) / len(force_2_queue)))
 
-    calculated_pos = mech_controller.calculate_cords(motor1.step, motor2.step)
+    calculated_pos = mech_device.calculate_cords(motor1.step, motor2.step)
 
     # DRAWING
     # clear

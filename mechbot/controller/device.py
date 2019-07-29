@@ -122,3 +122,14 @@ class VirtualDevice:
             (edge1r, edge2l), (edge1l, edge2r), (edge1l, edge2l)]]
         corners.sort(key=lambda p: vec.vec_len(p))
         return corners[0]
+
+    def draw(self, screen, cam):
+        pygame.draw.circle(screen, (210, 210, 210),
+                           cam.pixel((0, 0)), cam.pixel_len(1), 3)
+
+        self.motor1.draw(screen, cam)
+        self.motor1.draw_lines(screen, cam, self.gap)
+
+        self.motor2.draw(screen, cam)
+        self.motor2.draw_lines(screen, cam, self.gap)
+
