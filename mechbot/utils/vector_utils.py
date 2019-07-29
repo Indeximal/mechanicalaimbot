@@ -10,7 +10,10 @@ def vec_len(vec):
 
 
 def unit_vec(vec):
-    return vec / vec_len(vec)
+    length = vec_len(vec)
+    if length == 0:
+        raise ZeroDivisionError()
+    return vec / length
 
 
 def perp_vec2d(vec):
