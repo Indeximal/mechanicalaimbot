@@ -23,11 +23,12 @@ class MovementStateEnum:
 
 
 class MoveController:
-    def __init__(self, interface):
+    def __init__(self, interface, motion_threshold=.03, wait_ticks=20,
+                 wait_duration=.4):
         # Settings
-        self.motion_threshold = .03  # units
-        self.motion_path = deque(maxlen=20)  # ticks
-        self.wait_duration = .4  # seconds
+        self.motion_threshold = motion_threshold  # units
+        self.motion_path = deque(maxlen=wait_ticks)  # ticks
+        self.wait_duration = wait_duration  # seconds
 
         self.interface = interface
         self.move_state = MovementStateEnum.Idle
@@ -88,21 +89,26 @@ class CalibrationStateEnum:
 class CalibrationHelper(MoveController):
     """This class takes controll of an interface to approximate the device"""
 
-    def __init__(self, interface, motor_steps):
+    def __init__(self, interface, motor_steps, max_deflection=.3,
+                 center_threshold=.05, circle_1_radius=.8, circle_2_radius=.5,
+                 angular_step_1=.4, angular_step_2=.8, do_optimization=True,
+                 motion_threshold=.03, wait_ticks=20, wait_duration=.4):
         # Init
-        MoveController.__init__(self, interface)
+        MoveController.__init__(self, interface, wait_ticks=wait_ticks,
+            motion_threshold=motion_threshold, wait_duration=wait_duration)
         self.m1_points = []
         self.m2_points = []
         self.circle_points = []
         self.state = CalibrationStateEnum.Wait
         self.motor_steps = motor_steps
         # Settings
-        self.max_deflection = .3
-        self.center_threshold = .05
-        self.circle_1_radius = .8
-        self.circle_2_radius = .5
-        self.angular_step_1 = .4
-        self.angular_step_2 = .8
+        self.do_optimization = do_optimization
+        self.max_deflection = max_deflection
+        self.center_threshold = center_threshold
+        self.circle_1_radius = circle_1_radius
+        self.circle_2_radius = circle_2_radius
+        self.angular_step_1 = angular_step_1
+        self.angular_step_2 = angular_step_2
 
     def compute_guess(self):
         motors = []
@@ -166,6 +172,12 @@ class CalibrationHelper(MoveController):
         for epoch in range(iterations):
             helper.gradient_descent_step(epsilon)
 
+    def calculate_loss(self):
+        all_examples = self.m1_points + self.m2_points + self.circle_points
+        helper = GradientDescentHelper(self.device_guess, all_examples)
+
+        return helper.calc_loss()
+
     def _act(self):
         # Function for evaluation
         def reaction(steps, pos, t):
@@ -192,7 +204,10 @@ class CalibrationHelper(MoveController):
                 if self.step_2 < 0 and over_deflection:
                     # Compute a initial VirtualDevice guess
                     self.device_guess = self.compute_guess()
-                    self.state = CalibrationStateEnum.Gather_Circle
+                    if self.do_optimization:
+                        self.state = CalibrationStateEnum.Gather_Circle
+                    else:
+                        self.state = CalibrationStateEnum.Done
 
             if self.state == CalibrationStateEnum.Gather_Circle:
                 # Gather points on a cirlce for gradient descent
@@ -202,9 +217,8 @@ class CalibrationHelper(MoveController):
                     self.angular_step = self.angular_step_2
                 if self.angle > 4 * np.pi:
                     # Finish by doing some optimization
+                    self.optimize_guess(10, 0.001)
                     self.state = CalibrationStateEnum.Done
-                    self.optimize_guess(10, 0.01)
-                    self.optimize_guess(100, 0.001)
 
             self._act()
 

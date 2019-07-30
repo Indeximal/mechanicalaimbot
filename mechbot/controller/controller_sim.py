@@ -27,10 +27,10 @@ clock = pygame.time.Clock()
 debug = pygame_utils.LineWriter(10, 10)
 
 # SIMULATION INIT
-motor1 = StepperMotor((2., 2.), 200, 1, None)
-motor2 = StepperMotor((-2., 2.), 200, 1, None)
-motor1.align = np.arctan2(-motor1.pos[1], -motor1.pos[0])
-motor2.align = np.arctan2(-motor2.pos[1], -motor2.pos[0])
+motor1 = StepperMotor((1.6, -1.4), 200, 1, 2.44)
+motor2 = StepperMotor((-1.7, -1.5), 200, 1, 0.76)
+# motor1.align = np.arctan2(-motor1.pos[1], -motor1.pos[0])
+# motor2.align = np.arctan2(-motor2.pos[1], -motor2.pos[0])
 mech_device = VirtualDevice(motor1, motor2, gap=.2, stick=.1)
 
 simulation = MechanicalSimulator(mech_device, stick_force=.099)
@@ -38,7 +38,6 @@ simulation = MechanicalSimulator(mech_device, stick_force=.099)
 target = (0, 0)
 
 calibrator = CalibrationHelper(simulation.get_interface(), motor1.steps)
-
 
 tick_counter = 0
 
@@ -67,8 +66,11 @@ while running:
                 motor2.left()
                 simulation.move = False
             if event.key == pygame.K_p:
-                print(calibrator.m1_points, calibrator.m2_points,
-                      calibrator.circle_points)
+                guess = calibrator.get_result()
+                print("[{m1.pos[0]:.3f}|{m1.pos[1]:.3f}, {m2.pos[0]:.3f}|"
+                      "{m2.pos[1]:.3f}, {m1.align:.3f}, {m2.align:.3f}, {gap:.4f}]"
+                      .format(m1=guess.motor1, m2=guess.motor2,
+                              gap=guess.gap))
             if event.key == pygame.K_c:
                 calibrator.start()
             if event.key == pygame.K_ESCAPE:
