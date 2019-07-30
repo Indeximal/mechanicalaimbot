@@ -67,7 +67,8 @@ while running:
                 motor2.left()
                 simulation.move = False
             if event.key == pygame.K_p:
-                print(calibrator.compute_guess())
+                print(calibrator.m1_points, calibrator.m2_points,
+                      calibrator.circle_points)
             if event.key == pygame.K_c:
                 calibrator.start()
             if event.key == pygame.K_ESCAPE:
@@ -103,9 +104,9 @@ while running:
     if len(path) > 1:
         pygame.draw.lines(screen, (50, 50, 50), False, path)
 
-    for _, pos in calibrator.m1_points:
+    for pos, _, _ in calibrator.m1_points:
         pygame.draw.circle(screen, (0, 0, 0), camera.pixel(pos), 4, 2)
-    for _, pos in calibrator.m2_points:
+    for pos, _, _ in calibrator.m2_points:
         pygame.draw.circle(screen, (0, 0, 0), camera.pixel(pos), 4, 2)
     for pos, _, _ in calibrator.circle_points:
         pygame.draw.circle(screen, (0, 0, 0), camera.pixel(pos), 4, 2)

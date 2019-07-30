@@ -76,6 +76,7 @@ class MoveController:
 
 
 class CalibrationStateEnum:
+    Wait = 0
     M1_Prepare = 1
     M1_Gather = 2
     M2_Prepare = 3
@@ -93,12 +94,13 @@ class CalibrationHelper(MoveController):
         self.m1_points = []
         self.m2_points = []
         self.circle_points = []
+        self.state = CalibrationStateEnum.Wait
         self.motor_steps = motor_steps
         # Settings
         self.max_deflection = .3
         self.center_threshold = .05
         self.circle_1_radius = .8
-        self.circle_2_radius = .45
+        self.circle_2_radius = .5
         self.angular_step_1 = .4
         self.angular_step_2 = .8
 
@@ -109,7 +111,7 @@ class CalibrationHelper(MoveController):
         dphi = 2 * np.pi / self.motor_steps
 
         for data in [self.m1_points, self.m2_points]:
-            points = np.array([p for _, p in data])
+            points = np.array([p for p, _, _ in data])
             xs = points[..., 0]
             ys = points[..., 1]
             line = np.polyfit(xs, ys, 1)
@@ -157,6 +159,13 @@ class CalibrationHelper(MoveController):
 
         return VirtualDevice(motors[0], motors[1], gap + .1, .1)
 
+    def optimize_guess(self, iterations, epsilon):
+        all_examples = self.m1_points + self.m2_points + self.circle_points
+        helper = GradientDescentHelper(self.device_guess, all_examples)
+
+        for epoch in range(iterations):
+            helper.gradient_descent_step(epsilon)
+
     def _act(self):
         # Function for evaluation
         def reaction(steps, pos, t):
@@ -169,7 +178,7 @@ class CalibrationHelper(MoveController):
 
             if self.state == CalibrationStateEnum.M1_Gather:
                 # Gather floating points initial guess
-                self.m1_points.append((steps[0], pos))
+                self.m1_points.append((pos, steps[0], steps[1]))
                 if self.step_1 < 0 and over_deflection:
                     self.state = CalibrationStateEnum.M2_Prepare
 
@@ -179,8 +188,9 @@ class CalibrationHelper(MoveController):
 
             if self.state == CalibrationStateEnum.M2_Gather:
                 # Gather floating points initial guess
-                self.m2_points.append((steps[1], pos))
+                self.m2_points.append((pos, steps[0], steps[1]))
                 if self.step_2 < 0 and over_deflection:
+                    # Compute a initial VirtualDevice guess
                     self.device_guess = self.compute_guess()
                     self.state = CalibrationStateEnum.Gather_Circle
 
@@ -191,7 +201,10 @@ class CalibrationHelper(MoveController):
                     self.circle_radius = self.circle_2_radius
                     self.angular_step = self.angular_step_2
                 if self.angle > 4 * np.pi:
+                    # Finish by doing some optimization
                     self.state = CalibrationStateEnum.Done
+                    self.optimize_guess(10, 0.01)
+                    self.optimize_guess(100, 0.001)
 
             self._act()
 
@@ -220,6 +233,8 @@ class CalibrationHelper(MoveController):
             self.angle += self.angular_step
 
     def start(self):
+        if self.state != CalibrationStateEnum.Wait:
+            raise LogicError("This class can only be started once!")
         self.state = CalibrationStateEnum.M1_Prepare
         self.step_1 = 0
         self.step_2 = 0
@@ -231,11 +246,14 @@ class CalibrationHelper(MoveController):
     def is_done(self):
         return self.state == CalibrationStateEnum.Done
 
+    def get_result(self):
+        return self.device_guess
+
 
 class GradientDescentHelper:
-    def __init__(self, device):
+    def __init__(self, device, examples=[]):
         self.device = device
-        self.examples = []
+        self.examples = examples
 
     def add_example(self, step1, step2, pos):
         self.examples.append((pos, step1, step2))
