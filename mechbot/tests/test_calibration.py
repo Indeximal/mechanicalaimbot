@@ -3,7 +3,8 @@ import unittest
 import numpy as np
 
 from mechbot.controller.device import VirtualDevice, StepperMotor
-from mechbot.controller.calibration import GradientDescentHelper, CalibrationHelper
+from mechbot.controller.calibration import GradientDescentHelper, CalibrationHelper, MoveController
+from mechbot.controller.calibration import LogicError, NotReadyError
 from mechbot.controller.simulator import MechanicalSimulator
 from mechbot.utils.vector_utils import vec_len
 
@@ -65,6 +66,22 @@ class GradientDescentTests(unittest.TestCase):
         self.assertLess(end_diff, initial_diff)
 
 
+class MoveControllerTests(unittest.TestCase):
+    def test_errors(self):
+        dummy_motor1 = StepperMotor((1.6, -1.4), 200, 1, 2.44)
+        dummy_motor2 = StepperMotor((-1.7, -1.5), 200, 1, 0.76)
+        dummy_device = VirtualDevice(dummy_motor1, dummy_motor2, .13, .0)
+
+        simulation = MechanicalSimulator(dummy_device, .1)
+
+        ctrl = MoveController(simulation.get_interface())
+
+        ctrl.move_to(1, 1, None)
+
+        with self.assertRaises(NotReadyError):
+            ctrl.move_to(2, 2, None)
+
+
 class CalibrationHelperTests(unittest.TestCase):
     def test_compute_guess(self):
         correct_motor1 = StepperMotor((2., 2.), 200, 1, -2.356)
@@ -91,11 +108,13 @@ class CalibrationHelperTests(unittest.TestCase):
 
         # See how different the devices are
         device_diff = device_dist(guess, correct_device)
-        self.assertLess(device_diff, .05)
+        # print("diff g", device_diff)
+        self.assertLess(device_diff, .04)
 
         # See whether gradient descent improves results
         loss_helper = GradientDescentHelper(guess, all_points)
         L_0 = loss_helper.calc_loss()
+        # print("L g", L_0)
 
         calibrator.optimize_guess(15, 0.001)
         L_1 = loss_helper.calc_loss()
@@ -137,5 +156,9 @@ class CalibrationHelperTests(unittest.TestCase):
         #       .format(m1=guess.motor1, m2=guess.motor2, gap=guess.gap))
 
         guess = calibrator.get_result()
-        self.assertLess(device_dist(correct_device, guess), .2)
-        self.assertLess(calibrator.calculate_loss(), .06)
+        dist = device_dist(correct_device, guess)
+        # print("dist f", dist)
+        self.assertLess(dist, .2)
+        loss = calibrator.calculate_loss()
+        # print("loss f", loss)
+        self.assertLess(loss, .04)

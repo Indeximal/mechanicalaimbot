@@ -87,7 +87,7 @@ class CalibrationStateEnum:
 
 
 class CalibrationHelper(MoveController):
-    """This class takes controll of an interface to approximate the device"""
+    """This class takes control of an interface to approximate the device"""
 
     def __init__(self, interface, motor_steps, max_deflection=.3,
                  center_threshold=.05, circle_1_radius=.8, circle_2_radius=.5,
@@ -121,27 +121,27 @@ class CalibrationHelper(MoveController):
             xs = points[..., 0]
             ys = points[..., 1]
             line = np.polyfit(xs, ys, 1)
-            align = np.arctan(line[0]) + np.pi / 2
+            angle = np.arctan(line[0]) + np.pi / 2
 
-            direction = dir_vec(align)
+            direction = dir_vec(angle)
             orientation_first = np.sign(np.dot(direction, points[0]))
             orientation_last = np.sign(np.dot(direction, points[-1]))
             if orientation_first != orientation_last:
                 raise LogicError("The first and last point contradict!")
             # Flip the motor according to curvature of the points
             if orientation_first == 1:
-                align -= np.pi
+                angle -= np.pi
                 direction *= -1
 
-            perpendicular_vec = dir_vec(align + np.pi / 2)
+            perpendicular_vec = dir_vec(angle + np.pi / 2)
 
             # Compute the avg distances between two non-center-steps
-            non_zero_points = [p for p in points if vec_len(
+            non_zero_data = [(p, s1, s2) for p, s1, s2 in data if vec_len(
                 p) > self.center_threshold]
             distances = []
             point_gap = 0
             for vec in [perpendicular_vec, -perpendicular_vec]:
-                ps = [p for p in non_zero_points if np.dot(p, vec) < 0]
+                ps = [p for p, _, _ in non_zero_data if np.dot(p, vec) < 0]
                 if len(ps) < 2:
                     raise LogicError("Not enough points away from the center!")
                 distances += [vec_len(p - q) for p, q in zip(ps[1:], ps[:-1])]
@@ -153,10 +153,24 @@ class CalibrationHelper(MoveController):
             radius = dist / (2 * np.sin(dphi / 2))
             position = - direction * radius
 
-            theorectial_gap = (len(points) - len(non_zero_points) + 1) * dist
+            theorectial_gap = (len(points) - len(non_zero_data) + 1) * dist
 
             # Full gap is the missing distance, but convention: half gap
             gap += (theorectial_gap - point_gap) / 2
+
+            # Gap angle if the edge was a V-shape.
+            beta = np.arcsin(gap / radius)
+            aligns = []
+            for sign in [1, -1]:
+                vec = sign * perpendicular_vec
+                ps = [(p, s1 if len(motors) == 0 else s2) for p, s1, s2 in
+                      non_zero_data if np.dot(p, vec) < 0]
+
+                mx, my = position
+                angles = [(np.arctan2(y - my, x - mx), s) for (x, y), s in ps]
+                aligns += [phi + sign * beta - s * dphi for phi, s in angles]
+
+            align = sum(aligns) / len(aligns)
 
             motor = StepperMotor(position, self.motor_steps, 1, align)
             motors.append(motor)

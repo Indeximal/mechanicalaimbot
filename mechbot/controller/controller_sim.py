@@ -45,6 +45,8 @@ path = deque(maxlen=250)
 force_1_queue = deque(maxlen=30)
 force_2_queue = deque(maxlen=30)
 
+show_guess = False
+
 
 #  MAIN LOOP
 running = True
@@ -71,6 +73,7 @@ while running:
                       "{m2.pos[1]:.3f}, {m1.align:.3f}, {m2.align:.3f}, {gap:.4f}]"
                       .format(m1=guess.motor1, m2=guess.motor2,
                               gap=guess.gap))
+                show_guess = True
             if event.key == pygame.K_c:
                 calibrator.start()
             if event.key == pygame.K_ESCAPE:
@@ -115,6 +118,8 @@ while running:
 
     # Mechanics
     simulation.draw(screen, camera)
+    if show_guess:
+        calibrator.get_result().draw(screen, camera)
 
     # Target and guess
     pygame.draw.circle(screen, (110, 110, 200), camera.pixel(
