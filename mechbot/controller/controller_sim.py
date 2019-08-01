@@ -28,7 +28,7 @@ debug = pygame_utils.LineWriter(10, 10)
 
 # SIMULATION INIT
 motor1 = StepperMotor((1.6, -1.4), 200, 1, 2.44)
-motor2 = StepperMotor((-1.7, -1.5), 200, 1, 0.76)
+motor2 = StepperMotor((-1.7, -1.5), 200, 1, 0.74)
 # motor1.align = np.arctan2(-motor1.pos[1], -motor1.pos[0])
 # motor2.align = np.arctan2(-motor2.pos[1], -motor2.pos[0])
 mech_device = VirtualDevice(motor1, motor2, gap=.2, stick=.1)
@@ -45,7 +45,7 @@ path = deque(maxlen=250)
 force_1_queue = deque(maxlen=30)
 force_2_queue = deque(maxlen=30)
 
-show_guess = False
+guess_device = None
 
 
 #  MAIN LOOP
@@ -81,7 +81,8 @@ while running:
         # Move target
         if event.type == pygame.MOUSEBUTTONUP:
             target = camera.world_pos(pygame.mouse.get_pos())
-            a, b = mech_device.calculate_steps(target)
+            device = mech_device if guess_device is None else guess_device
+            a, b = device.calculate_steps(target)
             simulation.cmd_goto(a, b)
 
     # CALCULATIONS
@@ -98,6 +99,9 @@ while running:
     force_2_queue.append(simulation.torque_on_motor(motor2))
     debug.print("1: {:.2f}".format(sum(force_1_queue) / len(force_1_queue)))
     debug.print("2: {:.2f}".format(sum(force_2_queue) / len(force_2_queue)))
+
+    if calibrator.is_done() and guess_device is None:
+        guess_device = calibrator.get_result()
 
     calculated_pos = mech_device.calculate_cords(motor1.step, motor2.step)
 
@@ -118,8 +122,9 @@ while running:
 
     # Mechanics
     simulation.draw(screen, camera)
-    if show_guess:
-        calibrator.get_result().draw(screen, camera)
+    if guess_device is not None:
+        guess_device.draw(screen, camera)
+        debug.print("Using guessed device")
 
     # Target and guess
     pygame.draw.circle(screen, (110, 110, 200), camera.pixel(
