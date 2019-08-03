@@ -50,7 +50,6 @@ class annotated_frames:
                 return last_clean_frame, boxes_list, self
 
     def get_progress(self):
-        curr_frame = videoCapture.get(cv2.CAP_PROP_POS_FRAMES)
-        video_length = videoCapture.get(cv2.CAP_PROP_FRAME_COUNT)
-        return currFrame / video_length
-        
+        curr_frame = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
+        video_length = self.video_capture.get(cv2.CAP_PROP_FRAME_COUNT)
+        return curr_frame / video_length
