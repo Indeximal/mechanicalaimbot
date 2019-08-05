@@ -9,6 +9,12 @@ class ColoredBoxExtractor():
         self.min_area = min_area
 
     def extract(self, frame):
+        """Extracts colored regions in an image.
+
+        Returns:
+            rects: a list of 4-tuples representing [x, y, width, height] in
+                absolute pixels.
+        """
         # Finds color matching regions
         mask = cv2.inRange(frame, self.lower_color, self.upper_color)
         # Finds blobs in the mask
