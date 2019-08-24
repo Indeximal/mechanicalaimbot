@@ -1,8 +1,3 @@
-// defines pins numbers
-const int S2stepPin = 4; 
-const int S2dirPin = 3; 
-const int S1stepPin = 5;
-const int S1dirPin = 6;
 
 struct s_stepper1{
   const int dirPin = 6;
