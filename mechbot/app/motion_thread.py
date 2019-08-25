@@ -5,11 +5,11 @@ import queue
 
 import serial
 
-from mechbot.controller.interface import ControllerInterface
+from mechbot.controller.interface import SerialControllerInterface
  
 
 class MotionThread(threading.Thread):
-    def __init__(self, run_until, serial_port, serial_baud):
+    def __init__(self, run_until, serial_port, serial_baud, **kwargs):
         super(MotionThread, self).__init__(name="Motion-Thread")
         self.run_until = run_until
         self.serial_port = serial_port
@@ -23,19 +23,17 @@ class MotionThread(threading.Thread):
         return not self.run_until.is_set()
 
     def run(self):
-        with SerialConnectionThread(serial_port, serial_baud) as connection:
+        with SerialControllerInterface(serial_port, serial_baud, joystick_options) as interface:
             # todo timeout
-            while self.active() and not connection.is_alive():
+            while self.active() and not interface.is_alive():
                 time.sleep(.01)
 
-            interface = connection.get_interface()
-
-            # Calibrate
             calibrator = CalibrationHelper(interface, motor_steps, max_deflection=.3,
                  center_threshold=.05, circle_1_radius=.8, circle_2_radius=.5,
                  angular_step_1=.4, angular_step_2=.8, do_optimization=True,
                  motion_threshold=.03, wait_ticks=20, wait_duration=.4)
 
+            # Calibrate
             while self.active() and not calibrator.is_done():
                 calibrator.tick()
                 time.sleep(.01)
@@ -49,6 +47,8 @@ class MotionThread(threading.Thread):
             connection.add_motion_listener(motors_moved)
 
             self.calibrated = True
+            for listener in self.calibrated_listeners:
+                listener(device)
 
             while self.active():
                 time.sleep(1 / 60)  # Limit thread while testing

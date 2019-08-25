@@ -11,10 +11,12 @@ FROZEN_DETECTION_GRAPH = os.path.join(_module_path,
 
 # Find photo paths for testing in resources/test_images
 _test_image_dir = os.path.join(_module_path, "test_images")
-_test_jpgs = glob.glob(os.path.join(_test_image_dir, "*.jpg"))
-_test_pngs = glob.glob(os.path.join(_test_image_dir, "*.png"))
+_test_jpgs = sorted(glob.glob(os.path.join(_test_image_dir, "*.jpg")))
+_test_pngs = sorted(glob.glob(os.path.join(_test_image_dir, "*.png")))
 TEST_IMAGES = _test_jpgs + _test_pngs
 
 # Find frame paths for testing in resources/test_frames
 _test_frame_dir = os.path.join(_module_path, "test_frames")
-TEST_FRAMES = glob.glob(os.path.join(_test_frame_dir, "*.png"))
+TEST_FRAMES = sorted(glob.glob(os.path.join(_test_frame_dir, "*.png")))
+
+DEFAULT_CONFIG = os.path.join(_module_path, "default_config.ini")

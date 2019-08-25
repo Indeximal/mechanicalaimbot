@@ -2,35 +2,52 @@ import threading
 import time
 
 import numpy as np
+import mss
+from PIL import Image
 
-
-class InferenceTimings:
-    def __init__(self, t_capture_start, t_capture_end, t_inference_start, 
-                 t_inference_end):
-        self.start_time = t_capture_start
-        self.capture_duration = t_capture_end - t_capture_start
-        self.conversion_duration = t_inference_start - t_capture_end
-        self.inference_duration = t_inference_end - t_inference_start
+from mechbot.inference.detection import ObjectDetector
+from mechbot.utils import profiling
 
 
 class InferenceThread(threading.Thread):
     """Thread deticated to running object detection"""
-    def __init__(self, run_until):
+    def __init__(self, run_until, config):
         super(InferenceThread, self).__init__(name="Inference-Thread")
         self.run_until = run_until
+        self.config = config
         self.detection_listeners = []
     
     def run(self):
-        while not self.run_until.is_set():
-            frame = np.zeros((1920, 1080, 3), dtype=np.uint8)
+        graph_path = self.config.inference_graph
+        monitor_nr = self.config.monitor_number
+        score_thresh = self.config.score_thresh
+        im_ft = self.config.inference_input_format
 
-            detections = np.zeros((100, 4), dtype=float)
+        profiler = profiling.MultiStopwatch(maxlaps=10)
 
-            for listener in self.detection_listeners:
-                timings = InferenceTimings(.1, .2, .3, .4)
-                listener(frame, detections, timings)
+        with ObjectDetector(graph_path, im_ft) as detector, mss.mss() as sct:
+            while not self.run_until.is_set():
+                profiler.lap()
+                screen_shot = sct.grab(sct.monitors[monitor_nr])
+                profiler.partial("capture")
 
-            time.sleep(1 / 60)  # Limit thread while testing
+                (im_width, im_height) = screen_shot.size
+                data = Image.frombytes("RGB", screen_shot.size, screen_shot.bgra, "raw", "BGRX").tobytes()
+                im = np.frombuffer(data, dtype=np.uint8).reshape((im_height, im_width, 3))
+                profiler.partial("conversion")
+
+                # Run inference
+                results = detector.run_single(im, "RGB")
+
+                # print(results)
+                detections = [(box, classID) for box, score, classID 
+                              in zip(*results) if score > score_thresh]
+
+                profiler.partial("detection")
+
+                timings = profiler.get_frozen_data()
+                for listener in self.detection_listeners:
+                    listener(np.array(screen_shot), detections, timings)
 
     def add_detection_listener(self, listener):
         self.detection_listeners.append(listener)

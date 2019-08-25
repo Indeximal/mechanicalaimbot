@@ -31,7 +31,7 @@ def convert_screen_shot_to_tensor_format(im):
 color_map = [None, (181, 73, 61), (162, 43, 173)] + [(0, 0, 0)] * 100
 
 # Load graph from drive
-PATH_TO_FROZEN_GRAPH = os.path.join('ssd_csgo_2019_05_21',
+PATH_TO_FROZEN_GRAPH = os.path.join('ssd_mobilenet_v1_csgo_2019_05_21',
     'frozen_inference_graph.pb')
 graph_def = tf.GraphDef()
 with tf.gfile.GFile(PATH_TO_FROZEN_GRAPH, 'rb') as fid:
