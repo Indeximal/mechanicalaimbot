@@ -1,3 +1,4 @@
+configargparse
 mss==4.0.2
 numpy==1.17.0
 pygame==1.9.6

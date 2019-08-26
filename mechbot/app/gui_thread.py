@@ -63,17 +63,23 @@ class GUIThread(threading.Thread):
                 rgb_data[:, :, 1] = frame[:, :, 1]
                 rgb_data[:, :, 2] = frame[:, :, 0]
                 frame_surface = pygame.surfarray.make_surface(rgb_data)
+
+                for (y_min, x_min, y_max, x_max), class_id in detections:
+                    color = self.config.rect_color_per_class[class_id-1]
+                    color = tuple(color)
+                    rect = (y_min * w, x_min * h,
+                           (y_max - y_min) * w, (x_max - x_min) * h)
+                    pygame.draw.rect(frame_surface, color, rect, 
+                                     self.config.rect_width)
+
                 scale = min(width / h, height / w)  # rotation swaps h and w
                 surf = pygame.transform.rotozoom(frame_surface, 90, scale)
                 display_surface = pygame.transform.flip(surf, False, True)
 
-                for (y_min, x_min, y_max, x_max), class_id in detections:
-                    color = tuple(self.config.rect_color_per_class[class_id-1])
-                    rect = (x_min * w, y_min * h,
-                           (x_max - x_min) * w, (y_max - y_min) * h)
-                    rect(frame_surface, color, rect, width=config.rect_width)
 
             if timings is not None:
+                avg_ms = timings.avg_lap_time() * 1000
+                info_display.print("Total: {:.0f}ms".format(avg_ms))
                 deltas = timings.partial_durations_min_avg_max()
                 for name, (t_min, t_avg, t_max) in deltas.items():
                     info_display.print("{}: {:.0f}ms>{:.0f}ms>{:.0f}ms".format(

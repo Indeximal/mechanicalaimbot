@@ -35,6 +35,13 @@ class StopwatchData:
             ret[name] = t - last
             last = t
 
+    def avg_lap_time(self):
+        if len(self.partials) < 2:
+            return 0
+        starts = [lap[0][1] for lap in self.partials]
+        deltas = [t2 - t1 for t1, t2 in zip(starts[:-1], starts[1:])]
+        return sum(deltas) / len(deltas)
+
 
 class MultiStopwatch:
     """Util for measuring time differences"""

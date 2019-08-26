@@ -21,23 +21,26 @@ class InferenceThread(threading.Thread):
         graph_path = self.config.inference_graph
         monitor_nr = self.config.monitor_number
         score_thresh = self.config.score_thresh
-        im_ft = self.config.inference_input_format
+        input_format = self.config.inference_input_format
 
         profiler = profiling.MultiStopwatch(maxlaps=10)
 
-        with ObjectDetector(graph_path, im_ft) as detector, mss.mss() as sct:
+        with ObjectDetector(graph_path) as detector, mss.mss() as sct:
             while not self.run_until.is_set():
                 profiler.lap()
                 screen_shot = sct.grab(sct.monitors[monitor_nr])
                 profiler.partial("capture")
 
-                (im_width, im_height) = screen_shot.size
-                data = Image.frombytes("RGB", screen_shot.size, screen_shot.bgra, "raw", "BGRX").tobytes()
-                im = np.frombuffer(data, dtype=np.uint8).reshape((im_height, im_width, 3))
+                if input_format == "RGB":
+                    (im_width, im_height) = screen_shot.size
+                    data = Image.frombytes("RGB", screen_shot.size, screen_shot.bgra, "raw", "BGRX").tobytes()
+                    image = np.frombuffer(data, dtype=np.uint8).reshape((im_height, im_width, 3))
+                else:
+                    image = screen_shot.bgra
                 profiler.partial("conversion")
 
                 # Run inference
-                results = detector.run_single(im, "RGB")
+                results = detector.run_single(image)
 
                 # print(results)
                 detections = [(box, classID) for box, score, classID 

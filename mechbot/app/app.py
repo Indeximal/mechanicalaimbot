@@ -5,11 +5,13 @@ from pathlib import Path
 
 import configargparse
 import numpy as np
+import yappi
 
 from mechbot.app.inference_thread import InferenceThread
 from mechbot.app.motion_thread import MotionThread
 from mechbot.app.gui_thread import GUIThread
 from mechbot import resources
+
 
 def run():
     parser = configargparse.ArgParser(
@@ -21,15 +23,15 @@ def run():
     parser.add("--display_width", type=int, required=True)
     parser.add("--display_height", type=int, required=True)
     parser.add("--inference_graph", type=str, required=True)
-    parser.add("--inference_input_format", type=str, required=True)
+    parser.add("--inference_input_format", type=str, required=True,
+               choices=["RGB", "BGRA"])
     parser.add("--display_name", type=str, required=True)
     parser.add("--display_fps", type=int, required=True)
     parser.add("--score_thresh", type=float, required=True)
     parser.add("--monitor_number", type=int, required=True)
     parser.add("--rect_width", type=int, required=True)
-    parser.add("--rect_color_per_class", type=int, action="append", 
+    parser.add("--rect_color_per_class", type=int, action="append",
                required=True)
-    
 
     options = parser.parse_args()
 
@@ -51,10 +53,11 @@ def run():
         print("Shutting down...")
         shutdown_event.set()
 
-    #signal.signal(signal.SIGTERM, shutdown)
+    # signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
 
-    inference_thread = InferenceThread(run_until=shutdown_event, config=options)
+    inference_thread = InferenceThread(run_until=shutdown_event,
+                                       config=options)
     motion_thread = MotionThread(run_until=shutdown_event, **option_dict)
     gui_thread = GUIThread(run_until=shutdown_event, config=options)
 
@@ -69,8 +72,10 @@ def run():
 
     # Start threads
     inference_thread.start()
-    #motion_thread.start()
+    # motion_thread.start()
     gui_thread.start()
+
+    begin = time.time()
 
     # Shutdown when gui thread exits
     while not shutdown_event.is_set():
@@ -79,24 +84,15 @@ def run():
             shutdown()
             break
         time.sleep(.1)
+        if not yappi.is_running() and time.time() - begin > 8.:
+            print("start")
+            yappi.start()
+
+    func_stats = yappi.get_func_stats()
+    func_stats.save("prof.out." + str(time.time()), "pstat")
+    func_stats.print_all()
+    yappi.get_thread_stats().print_all()
+
 
 if __name__ == "__main__":
     run()
-
-
-# Serial
-# load_graph()
-
-# with session:
-#     init_graph()
-#     with mms:
-#         while True:
-#             handle_pygame()
-
-#             if calibrated:
-#                 get_frame()
-#                 run_inference()
-#                 send_to_hardware()
-#             else:
-#                 calibrate_hareware()
-

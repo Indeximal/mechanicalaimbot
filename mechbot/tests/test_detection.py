@@ -12,7 +12,7 @@ class ObjectDetectorTests(unittest.TestCase):
         expected_scores = np.array([[0.99999994, 0.99999744, 0.9999924, 0.9998251, 0.], [0.9999981, 0.9998213, 0.99811554, 0.79213023, 0.]], dtype=np.float32)
         expected_classes = np.array([[1, 1, 2, 2, 1], [2, 1, 2, 1, 1]])
 
-        with ObjectDetector(resources.FROZEN_DETECTION_GRAPH, "RGB") as detector:
+        with ObjectDetector(resources.FROZEN_DETECTION_GRAPH) as detector:
             result = detector.load_and_run_images(resources.TEST_FRAMES[:2])
             boxes, scores, classes = result
 
