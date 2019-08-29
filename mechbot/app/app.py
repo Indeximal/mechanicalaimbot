@@ -29,27 +29,45 @@ def run():
     parser.add("--display_fps", type=int, required=True)
     parser.add("--score_thresh", type=float, required=True)
     parser.add("--monitor_number", type=int, required=True)
+    parser.add("--monitor_width", type=int, required=True)
+    parser.add("--monitor_height", type=int, required=True)
     parser.add("--rect_width", type=int, required=True)
+    parser.add("--joystick_number", type=int, required=True)
+    parser.add("--joystick_axis_x", type=int, required=True)
+    parser.add("--joystick_axis_y", type=int, required=True)
+    parser.add("--target_class_id", type=int, required=True)
+    parser.add("--motor_steps", type=int, required=True)
+    parser.add("--use_simulator", action="store_true", required=True)
+    parser.add("--calib_max_deflection", type=float, required=True)
+    parser.add("--calib_center_threshold", type=float, required=True)
+    parser.add("--calib_circle_1_radius", type=float, required=True)
+    parser.add("--calib_circle_2_radius", type=float, required=True)
+    parser.add("--calib_angular_step_1", type=float, required=True)
+    parser.add("--calib_angular_step_2", type=float, required=True)
+    parser.add("--calib_do_optimization", action="store_true", required=True)
+    parser.add("--calib_motion_threshold", type=float, required=True)
+    parser.add("--calib_wait_ticks", type=int, required=True)
+    parser.add("--calib_wait_duration", type=float, required=True)
+    parser.add("--full_deflection_dist", type=float, required=True)
     parser.add("--rect_color_per_class", type=int, action="append",
                required=True)
 
     options = parser.parse_args()
 
+    # Handle special cases for paths and 2d arrays in options
     options.rect_color_per_class = np.array(
         options.rect_color_per_class).reshape(-1, 3)
 
-    # Handle special cases for paths in options
     if options.inference_graph.startswith("resources."):
         inference_path = vars(resources)[options.inference_graph[10:]]
     else:
         inference_path = str(Path(options.inference_graph))
     options.inference_graph = inference_path
 
-    option_dict = vars(options)
-
+    # Proper shutdown
     shutdown_event = threading.Event()
 
-    def shutdown(*args):
+    def shutdown(*args, **kwargs):
         print("Shutting down...")
         shutdown_event.set()
 
@@ -58,15 +76,14 @@ def run():
 
     inference_thread = InferenceThread(run_until=shutdown_event,
                                        config=options)
-    motion_thread = MotionThread(run_until=shutdown_event, **option_dict)
+    motion_thread = MotionThread(run_until=shutdown_event, config=options)
     gui_thread = GUIThread(run_until=shutdown_event, config=options)
 
     # Wiring up event listeners
     inference_thread.add_detection_listener(motion_thread.push_detections)
     inference_thread.add_detection_listener(gui_thread.push_detections)
 
-    motion_thread.add_calibrated_listener(gui_thread.set_device)
-    motion_thread.add_target_listener(gui_thread.set_target)
+    motion_thread.add_status_listener(gui_thread.push_device_status)
 
     gui_thread.add_shutdown_listener(shutdown)
 

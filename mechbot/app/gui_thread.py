@@ -4,6 +4,7 @@ import queue
 import pygame
 import numpy as np
 
+from mechbot.app.motion_thread import DeviceStatusEnum
 from mechbot.utils import pygame_utils
 
 
@@ -17,6 +18,7 @@ class GUIThread(threading.Thread):
         self.detection_queue = queue.Queue(maxsize=5)
         self.display_device = None
         self.target_pos = None
+        self.device_status = "Initializing"
 
     def active(self):
         return not self.run_until.is_set()
@@ -76,7 +78,6 @@ class GUIThread(threading.Thread):
                 surf = pygame.transform.rotozoom(frame_surface, 90, scale)
                 display_surface = pygame.transform.flip(surf, False, True)
 
-
             if timings is not None:
                 avg_ms = timings.avg_lap_time() * 1000
                 info_display.print("Total: {:.0f}ms".format(avg_ms))
@@ -95,15 +96,17 @@ class GUIThread(threading.Thread):
             clock.tick(self.config.display_fps)
             pygame.display.flip()
 
-
-    def set_device(self, device):
-        self.display_device = device
-
-    def set_target(self, pos):
-        self.target_pos = pos
-
     def push_detections(self, frame, rects, timings):
         self.detection_queue.put((frame, rects, timings))
 
     def add_shutdown_listener(self, listener):
         self.shutdown_listeners.append(listener)
+
+    def push_device_status(self, status_type, *args):
+        if status_type == DeviceStatusEnum.CALIBRATED:
+            device, = args
+            self.display_device = device
+            self.device_status = "Calibrated"
+        elif status_type == DeviceStatusEnum.TARGET:
+            pos, s2, s2 = args
+            self.target_pos = pos
