@@ -22,6 +22,11 @@ int incoming[2];
 int start = 0;
 
 void setup() {
+  s1.dirPin = 6;
+  s1.stepPin = 5;
+  s2.dirPin = 3;
+  s2.stepPin = 4;
+  
   Serial.begin(9600);
   
   // initialize pins
@@ -29,11 +34,6 @@ void setup() {
   pinMode(s1.dirPin, OUTPUT);
   pinMode(s2.stepPin, OUTPUT);
   pinMode(s2.dirPin, OUTPUT);
-
-  s1.dirPin = 6;
-  s1.stepPin = 5;
-  s2.dirPin = 3;
-  s2.stepPin = 4;
 }
 void loop() {
   if(Serial.available() >= 4){             //read 4-Byte message
@@ -47,14 +47,11 @@ void loop() {
       Serial.write(1);                    //send back 1 to python as indication that message was successfully readen
     }
     
-    (*big).currentPosition = (*big).currentPosition * (*big).dir;
-    (*small).currentPosition = (*small).currentPosition * (*small).dir;
+    //(*big).currentPosition = (*big).currentPosition * (*big).dir;
+    //(*small).currentPosition = (*small).currentPosition * (*small).dir;
     
     incoming[0] = incoming[0] - s1.currentPosition;
     incoming[1] = incoming[1] - s2.currentPosition; 
-    
-    s1.currentPosition = 0;
-    s2.currentPosition = 0;
       
     if(incoming[0] < 0){ //set direction 
       digitalWrite(s1.dirPin, HIGH);
@@ -83,8 +80,8 @@ void loop() {
       small = &s2;
     }
     else{
-      big = &s1;
-      small = &s2;;
+      big = &s2;
+      small = &s1;
     }
     
     (*big).steps = (*big).steps*2-1;
@@ -108,19 +105,17 @@ void loop() {
     digitalWrite((*big).stepPin, !(*big).step_state);
     (*big).step_state = !(*big).step_state;
     (*big).steps--;
-
     if((*big).step_state == HIGH){
-      (*big).currentPosition++;
+      (*big).currentPosition = (*big).currentPosition + (*big).dir;
     }
   } 
-  if((millis()-(*small).time_now > (*small).time_min) && ((*small).steps > 0)){
+  if((millis()-(*small).time_now > (*small).time_min) && ((*small).steps > 0) && start){
     (*small).time_now = millis();
     digitalWrite((*small).stepPin, !(*small).step_state);
     (*small).step_state = !(*small).step_state;
     (*small).steps--; 
-    
     if((*small).step_state == HIGH){
-      (*small).currentPosition++;
+      (*small).currentPosition = (*small).currentPosition + (*small).dir;
     }
   }  
 }
