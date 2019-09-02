@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 
@@ -12,7 +13,7 @@ from mechbot.utils import profiling
 class InferenceThread(threading.Thread):
     """Thread deticated to running object detection"""
     def __init__(self, run_until, config):
-        super(InferenceThread, self).__init__(name="Inference-Thread")
+        super(InferenceThread, self).__init__(name="InferenceThread")
         self.run_until = run_until
         self.config = config
         self.detection_listeners = []
@@ -51,6 +52,8 @@ class InferenceThread(threading.Thread):
                 timings = profiler.get_frozen_data()
                 for listener in self.detection_listeners:
                     listener(np.array(screen_shot), detections, timings)
+
+        logging.info("exit")
 
     def add_detection_listener(self, listener):
         self.detection_listeners.append(listener)

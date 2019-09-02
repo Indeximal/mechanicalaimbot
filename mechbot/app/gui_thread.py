@@ -1,3 +1,4 @@
+import logging
 import threading
 import queue
 
@@ -11,7 +12,7 @@ from mechbot.utils import pygame_utils
 class GUIThread(threading.Thread):
     """Thread deticated to running the pygame display"""
     def __init__(self, run_until, config):
-        super(GUIThread, self).__init__(name="GUI-Thread")
+        super(GUIThread, self).__init__(name="GUIThread")
         self.run_until = run_until
         self.config = config
         self.shutdown_listeners = []
@@ -36,6 +37,9 @@ class GUIThread(threading.Thread):
 
         display_surface = None
         timings = None
+
+        # TODO: maked dynamicly resizeable
+        device_camera = pygame_utils.Camera(80., 640, 220)
 
         info_display = pygame_utils.LineWriter(20, 20, color=(204, 20, 20))
 
@@ -85,7 +89,10 @@ class GUIThread(threading.Thread):
                 for name, (t_min, t_avg, t_max) in deltas.items():
                     info_display.print("{}: {:.0f}ms>{:.0f}ms>{:.0f}ms".format(
                         name, t_min * 1000, t_avg * 1000, t_max * 1000))
+            info_display.print("Device status: "
+                               + self.device_status.capitalize())
 
+            # DRAWING
             screen.fill((255, 255, 255))
 
             if display_surface is not None:
@@ -93,8 +100,16 @@ class GUIThread(threading.Thread):
 
             info_display.draw(screen)
 
+            # Draw device
+            if self.display_device is not None:
+                self.display_device.draw(screen, device_camera)
+                # TODO: Draw stick
+
             clock.tick(self.config.display_fps)
             pygame.display.flip()
+
+        pygame.quit()
+        logging.info("exit")
 
     def push_detections(self, frame, rects, timings):
         self.detection_queue.put((frame, rects, timings))
@@ -110,3 +125,5 @@ class GUIThread(threading.Thread):
         elif status_type == DeviceStatusEnum.TARGET:
             pos, s2, s2 = args
             self.target_pos = pos
+        else:
+            self.device_status = status_type.name

@@ -1,11 +1,12 @@
 import threading
 import signal
+import logging
 import time
 from pathlib import Path
 
 import configargparse
 import numpy as np
-import yappi
+# import yappi
 
 from mechbot.app.inference_thread import InferenceThread
 from mechbot.app.motion_thread import MotionThread
@@ -37,22 +38,31 @@ def run():
     parser.add("--joystick_axis_y", type=int, required=True)
     parser.add("--target_class_id", type=int, required=True)
     parser.add("--motor_steps", type=int, required=True)
-    parser.add("--use_simulator", action="store_true", required=True)
+    parser.add("--use_simulator", action="store_true")
+    parser.add("--debug_output", action="store_true")
+    parser.add("--simulator_dt", type=float, required=True)
     parser.add("--calib_max_deflection", type=float, required=True)
     parser.add("--calib_center_threshold", type=float, required=True)
     parser.add("--calib_circle_1_radius", type=float, required=True)
     parser.add("--calib_circle_2_radius", type=float, required=True)
     parser.add("--calib_angular_step_1", type=float, required=True)
     parser.add("--calib_angular_step_2", type=float, required=True)
-    parser.add("--calib_do_optimization", action="store_true", required=True)
+    parser.add("--calib_do_optimization", action="store_true")
     parser.add("--calib_motion_threshold", type=float, required=True)
     parser.add("--calib_wait_ticks", type=int, required=True)
     parser.add("--calib_wait_duration", type=float, required=True)
     parser.add("--full_deflection_dist", type=float, required=True)
+    parser.add("--full_deflection", type=float, required=True)
     parser.add("--rect_color_per_class", type=int, action="append",
                required=True)
 
     options = parser.parse_args()
+
+    if options.debug_output:
+        fmt = "%(levelname)s (%(threadName)s): %(message)s"
+        logging.basicConfig(level=logging.DEBUG,
+                            format=fmt)
+        logging.debug(options)
 
     # Handle special cases for paths and 2d arrays in options
     options.rect_color_per_class = np.array(
@@ -68,7 +78,7 @@ def run():
     shutdown_event = threading.Event()
 
     def shutdown(*args, **kwargs):
-        print("Shutting down...")
+        logging.info("Shutting down...")
         shutdown_event.set()
 
     # signal.signal(signal.SIGTERM, shutdown)
@@ -89,7 +99,7 @@ def run():
 
     # Start threads
     inference_thread.start()
-    # motion_thread.start()
+    motion_thread.start()
     gui_thread.start()
 
     begin = time.time()
@@ -97,19 +107,20 @@ def run():
     # Shutdown when gui thread exits
     while not shutdown_event.is_set():
         if not gui_thread.is_alive():
-            print("Gui thread has exited unexpectedly!")
+            logging.warning("Gui thread has exited unexpectedly!")
             shutdown()
             break
         time.sleep(.1)
-        if not yappi.is_running() and time.time() - begin > 8.:
-            print("start")
-            yappi.start()
+        # if not yappi.is_running() and time.time() - begin > 8.:
+        #     print("start")
+        #     yappi.start()
 
-    func_stats = yappi.get_func_stats()
-    func_stats.save("prof.out." + str(time.time()), "pstat")
-    func_stats.print_all()
-    yappi.get_thread_stats().print_all()
+    # func_stats = yappi.get_func_stats()
+    # func_stats.save("prof.out." + str(time.time()), "pstat")
+    # func_stats.print_all()
+    # yappi.get_thread_stats().print_all()
 
+    logging.info("exit")
 
 if __name__ == "__main__":
     run()
