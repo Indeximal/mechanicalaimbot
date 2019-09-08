@@ -10,7 +10,7 @@ struct s_stepper{
 
   float time_min;
 };
-const float time_min = 100;
+const float time_min = 1;
 
 s_stepper s1;
 s_stepper s2;
@@ -21,7 +21,7 @@ s_stepper *small = &s2;
 int incoming[2];
 int start = 0;
 
-//int a = 0;
+int a = 42;
 
 void setup() {
   s1.dirPin = 6;
@@ -36,6 +36,9 @@ void setup() {
   pinMode(s1.dirPin, OUTPUT);
   pinMode(s2.stepPin, OUTPUT);
   pinMode(s2.dirPin, OUTPUT);
+
+  Serial.write((byte)255);
+  Serial.write(0);
 }
 void loop() {
   if(Serial.available() >= 4){             //read 4-Byte message
@@ -101,21 +104,22 @@ void loop() {
   }
   
   if((millis()- big->time_now > big->time_min) && (big->steps > 0) && start){
+    a = 3;
     digitalWrite(big->stepPin, !big->step_state);
     big->time_now = millis();
     big->step_state = !big->step_state;
     big->steps--;
-    //a = 3;
     if(big->step_state == HIGH){
       big->currentPosition = big->currentPosition + big->dir;
+      Serial.write(big->currentPosition);
     }
   } 
   if((millis()-small->time_now > small->time_min) && (small->steps > 0) && start){
+    a = 3;
     digitalWrite(small->stepPin, !small->step_state);
     small->time_now = millis();
     small->step_state = !small->step_state;
     small->steps--;
-    //a = 3;
     if(small->step_state == HIGH){
       small->currentPosition = small->currentPosition + small->dir;
     }
