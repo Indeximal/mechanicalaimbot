@@ -27,10 +27,10 @@ clock = pygame.time.Clock()
 debug = pygame_utils.LineWriter(10, 10)
 
 # SIMULATION INIT
-motor1 = StepperMotor((1.6, -1.4), 200, 1, 2.44)
-motor2 = StepperMotor((-1.7, -1.5), 200, 1, 0.74)
-# motor1.align = np.arctan2(-motor1.pos[1], -motor1.pos[0])
-# motor2.align = np.arctan2(-motor2.pos[1], -motor2.pos[0])
+motor1 = StepperMotor((1.7, 1.4), 200, 1, 2.44)
+motor2 = StepperMotor((-1.7, 1.4), 200, 1, 0.74)
+motor1.align = np.arctan2(-motor1.pos[1], -motor1.pos[0])
+motor2.align = np.arctan2(-motor2.pos[1], -motor2.pos[0])
 mech_device = VirtualDevice(motor1, motor2, gap=.2, stick=.1)
 
 simulation = MechanicalSimulator(mech_device, stick_force=.099)

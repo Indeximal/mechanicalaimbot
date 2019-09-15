@@ -37,17 +37,21 @@ def run():
     parser.add("--joystick_axis_x", type=int, required=True)
     parser.add("--joystick_axis_y", type=int, required=True)
     parser.add("--target_class_id", type=int, required=True)
+    parser.add("--step_shift", type=int, required=True)
     parser.add("--motor_steps", type=int, required=True)
+    parser.add("--device_gap", type=float, required=True)
+    parser.add("--min_deflection", type=float, required=True)
+    parser.add("--motor_radius", type=float, required=True)
+    parser.add("--device_size", type=float, required=True)
+    parser.add("--motor1_angle", type=float, required=True)
+    parser.add("--motor2_angle", type=float, required=True)
     parser.add("--use_simulator", action="store_true")
+    parser.add("--invert_y", action="store_true")
     parser.add("--debug_output", action="store_true")
     parser.add("--simulator_dt", type=float, required=True)
     parser.add("--calib_max_deflection", type=float, required=True)
     parser.add("--calib_center_threshold", type=float, required=True)
-    parser.add("--calib_circle_1_radius", type=float, required=True)
-    parser.add("--calib_circle_2_radius", type=float, required=True)
-    parser.add("--calib_angular_step_1", type=float, required=True)
-    parser.add("--calib_angular_step_2", type=float, required=True)
-    parser.add("--calib_do_optimization", action="store_true")
+    parser.add("--joystick_radius", type=float, required=True)
     parser.add("--calib_motion_threshold", type=float, required=True)
     parser.add("--calib_wait_ticks", type=int, required=True)
     parser.add("--calib_wait_duration", type=float, required=True)
@@ -58,11 +62,10 @@ def run():
 
     options = parser.parse_args()
 
-    if options.debug_output:
-        fmt = "%(levelname)s (%(threadName)s): %(message)s"
-        logging.basicConfig(level=logging.DEBUG,
-                            format=fmt)
-        logging.debug(options)
+    level = logging.DEBUG if options.debug_output else logging.INFO
+    fmt = "%(levelname)s (%(threadName)s): %(message)s"
+    logging.basicConfig(level=level, format=fmt)
+    logging.debug(options)
 
     # Handle special cases for paths and 2d arrays in options
     options.rect_color_per_class = np.array(
@@ -95,6 +98,7 @@ def run():
 
     motion_thread.add_status_listener(gui_thread.push_device_status)
 
+    # TODO: GUI might have to run in main thread for macOS
     gui_thread.add_shutdown_listener(shutdown)
 
     # Start threads
@@ -121,6 +125,7 @@ def run():
     # yappi.get_thread_stats().print_all()
 
     logging.info("exit")
+
 
 if __name__ == "__main__":
     run()

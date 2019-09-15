@@ -38,13 +38,21 @@ class GUIThread(threading.Thread):
         display_surface = None
         timings = None
 
-        # TODO: maked dynamicly resizeable
-        device_camera = pygame_utils.Camera(80., 640, 220)
+        def create_camera():
+            x_limit = 1.5
+            y_limit = 1.2
+            cam_scale = self.config.device_size / 2.0 / x_limit * width
+            x = width - x_limit * cam_scale
+            y = y_limit * cam_scale
+            return pygame_utils.Camera(cam_scale, x, y, True)
+
+        device_camera = create_camera()
 
         info_display = pygame_utils.LineWriter(20, 20, color=(204, 20, 20))
 
         while self.active():
             for event in pygame.event.get():
+                # TODO: Click to aim
                 if event.type == pygame.QUIT: 
                     for listener in self.shutdown_listeners:
                         listener()
@@ -59,16 +67,17 @@ class GUIThread(threading.Thread):
                     screen_size = width, height = event.w, event.h
                     screen = pygame.display.set_mode(screen_size, 
                                                      pygame.RESIZABLE)
+                    device_camera = create_camera()
 
             # Fetch new data if availiable
             if not self.detection_queue.empty():
                 frame, detections, timings = self.detection_queue.get()
                 w, h, d = frame.shape
-                rgb_data = np.empty((w, h, 3), dtype=np.uint8)
-                rgb_data[:, :, 0] = frame[:, :, 2]
-                rgb_data[:, :, 1] = frame[:, :, 1]
-                rgb_data[:, :, 2] = frame[:, :, 0]
-                frame_surface = pygame.surfarray.make_surface(rgb_data)
+                # rgb_data = np.empty((w, h, 3), dtype=np.uint8)
+                # rgb_data[:, :, 0] = frame[:, :, 2]
+                # rgb_data[:, :, 1] = frame[:, :, 1]
+                # rgb_data[:, :, 2] = frame[:, :, 0]
+                frame_surface = pygame.surfarray.make_surface(frame)
 
                 for (y_min, x_min, y_max, x_max), class_id in detections:
                     color = self.config.rect_color_per_class[class_id-1]
@@ -102,8 +111,15 @@ class GUIThread(threading.Thread):
 
             # Draw device
             if self.display_device is not None:
+                # TODO: Background
                 self.display_device.draw(screen, device_camera)
+
+            if self.target_pos is not None:
                 # TODO: Draw stick
+                pygame.draw.circle(screen, (110, 110, 200),
+                                   device_camera.pixel(self.target_pos),
+                                   device_camera.pixel_len(
+                                       self.config.joystick_radius), 2)
 
             clock.tick(self.config.display_fps)
             pygame.display.flip()

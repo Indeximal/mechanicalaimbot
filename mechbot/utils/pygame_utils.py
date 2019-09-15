@@ -23,8 +23,9 @@ class LineWriter:
 
 
 class Camera:
-    def __init__(self, scale, shift_x, shift_y):
+    def __init__(self, scale, shift_x, shift_y, invert_y=False):
         self.scale = scale
+        self.y_scale = -scale if invert_y else scale
         self.dx = shift_x
         self.dy = shift_y
 
@@ -33,9 +34,8 @@ class Camera:
 
     def pixel(self, pos):
         x, y = pos
-        return (int(x * self.scale + self.dx), int(y * self.scale + self.dy))
+        return int(x * self.scale + self.dx), int(y * self.y_scale + self.dy)
 
     def world_pos(self, pixel):
         x, y = pixel
-        return ((x - self.dx) / self.scale, (y - self.dy) / self.scale)
-        
+        return (x - self.dx) / self.scale, (y - self.dy) / self.y_scale

@@ -19,6 +19,7 @@ class InferenceThread(threading.Thread):
         self.detection_listeners = []
     
     def run(self):
+        # Get options from config
         graph_path = self.config.inference_graph
         monitor_nr = self.config.monitor_number
         score_thresh = self.config.score_thresh
@@ -28,14 +29,19 @@ class InferenceThread(threading.Thread):
 
         with ObjectDetector(graph_path) as detector, mss.mss() as sct:
             while not self.run_until.is_set():
+                # Capture screenshot
                 profiler.lap()
                 screen_shot = sct.grab(sct.monitors[monitor_nr])
                 profiler.partial("capture")
 
+                (im_width, im_height) = screen_shot.size
+                # Convert to proper format
                 if input_format == "RGB":
-                    (im_width, im_height) = screen_shot.size
-                    data = Image.frombytes("RGB", screen_shot.size, screen_shot.bgra, "raw", "BGRX").tobytes()
-                    image = np.frombuffer(data, dtype=np.uint8).reshape((im_height, im_width, 3))
+                    data = Image.frombytes("RGB", screen_shot.size,
+                                           screen_shot.bgra, "raw",
+                                           "BGRX").tobytes()
+                    image = np.frombuffer(data, dtype=np.uint8).reshape(
+                        (im_height, im_width, 3))
                 else:
                     image = screen_shot.bgra
                 profiler.partial("conversion")
@@ -44,14 +50,14 @@ class InferenceThread(threading.Thread):
                 results = detector.run_single(image)
 
                 # print(results)
-                detections = [(box, classID) for box, score, classID 
+                detections = [(box, classID) for box, score, classID
                               in zip(*results) if score > score_thresh]
 
                 profiler.partial("detection")
 
                 timings = profiler.get_frozen_data()
                 for listener in self.detection_listeners:
-                    listener(np.array(screen_shot), detections, timings)
+                    listener(image, detections, timings)
 
         logging.info("exit")
 

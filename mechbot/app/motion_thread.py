@@ -8,7 +8,7 @@ import queue
 import serial
 import numpy as np
 
-from mechbot.controller.calibration import CalibrationHelper
+from mechbot.controller.calibration import CalibrationHelper, AlignmentHelper
 from mechbot.controller.device import VirtualDevice, StepperMotor
 from mechbot.controller.interface import SerialControllerInterface
 from mechbot.controller.simulator import MechanicalSimulator, SimulatorThread
@@ -49,24 +49,24 @@ class MotionThread(threading.Thread):
 
             self.send_status(DeviceStatusEnum.CONNECTED)
 
-            calibrator = self.setup_calibrator(interface)
-            calibrator.start()
+            time.sleep(.5)  # Wait a little
 
-            # Calibrate
-            while self.active() and not calibrator.is_done():
-                self.send_status(DeviceStatusEnum.CALIBRATING)
-                calibrator.tick()
-                time.sleep(.01)
-            if not self.active():
-                logging.info("exit")
-                return
+            # TODO: Figure out which motor is which
+            # calibrator = self.setup_calibrator(interface)
+            # calibrator.start()
+            #
+            # # Calibrate
+            # while self.active() and not calibrator.is_done():
+            #     self.send_status(DeviceStatusEnum.CALIBRATING)
+            #     calibrator.tick()
+            #     time.sleep(.01)
+            # if not self.active():
+            #     logging.info("exit")
+            #     return
 
-            self.device = calibrator.get_result()
-            # # Some code to set a debug device
-            # steps = self.config.motor_steps
-            # motor1 = StepperMotor((2., 2.), steps, 1, -2.356)
-            # motor2 = StepperMotor((-2., 2.), steps, 1, -0.785)
-            # self.device = VirtualDevice(motor1, motor2, .2, .1)
+            self.device = self.device_from_config()
+            # calibrator.apply_to_device(self.device)
+
             self.calibrated = True
             self.send_status(DeviceStatusEnum.CALIBRATED, self.device)
 
@@ -79,15 +79,19 @@ class MotionThread(threading.Thread):
             while self.active():
                 # Wait for next detection
                 try:
+                    # Might raise queue.Empty
                     t_start, detections = self.detections_queue.get(timeout=.2)
-                except queue.Empty:
-                    continue
+                    # Might raise TypeError: cannot unpack None
+                    pos, s1, s2 = self.calculate_target(t_start, detections)
 
-                pos, s1, s2 = self.calculate_target(t_start, detections)
-                if pos is not None:
                     self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2)
-
                     interface.cmd_goto(s1, s2)
+
+                except (queue.Empty, TypeError):
+                    self.send_status(DeviceStatusEnum.TARGET, np.zeros(2),
+                                     0, 0)
+                    interface.cmd_goto(0, 0)
+
         logging.info("exit")
 
     def calculate_target(self, t_start, detections):
@@ -99,18 +103,23 @@ class MotionThread(threading.Thread):
                                  self.config.monitor_height])
 
         if not centers:
-            return None, None, None
+            return None
 
         # Offset in pixels from crosshair
         offsets = [pos * monitor_size for pos in centers]
         nearest = min(offsets, key=vector_utils.vec_len)
 
+        # TODO: more intelligent
         # Calculate wanted joystick deflection
-        deflection = (vector_utils.vec_len(nearest)
-                      / self.config.full_deflection_dist)
+        deflection = vector_utils.vec_len(nearest) / (
+            (self.config.full_deflection_dist - self.config.min_deflection)
+            + self.config.min_deflection)
+
         if deflection > self.config.full_deflection:
             deflection = self.config.full_deflection
-        angle = np.arctan2(nearest[1], nearest[0])
+        # invert y if necessary
+        angle = np.arctan2((-1 if self.config.invert_y else 1) * nearest[1],
+                           nearest[0])
         target = vector_utils.dir_vec(angle) * deflection
 
         s1, s2 = self.device.calculate_steps(target)
@@ -119,10 +128,7 @@ class MotionThread(threading.Thread):
 
     def setup_interface_context(self):
         if self.config.use_simulator:
-            steps = self.config.motor_steps
-            motor1 = StepperMotor((2., 2.), steps, 1, -2.356)
-            motor2 = StepperMotor((-2., 2.), steps, 1, -0.785)
-            device = VirtualDevice(motor1, motor2, .2, .1)
+            device = self.device_from_config()
             sim = MechanicalSimulator(device, stick_force=.099)
             return SimulatorThread(sim, self.config.simulator_dt)
         else:
@@ -130,7 +136,8 @@ class MotionThread(threading.Thread):
                                              self.config.serial_baud,
                                              self.config.joystick_number,
                                              self.config.joystick_axis_x,
-                                             self.config.joystick_axis_y)
+                                             self.config.joystick_axis_y,
+                                             self.config.step_shift)
 
     def setup_calibrator(self, interface):
         options = vars(self.config)
@@ -139,7 +146,20 @@ class MotionThread(threading.Thread):
         kwargs = dict(
             [(k[6:], options[k]) for k in options if k.startswith("calib_")])
 
-        return CalibrationHelper(interface, self.config.motor_steps, **kwargs)
+        return AlignmentHelper(interface, **kwargs)
+
+    def device_from_config(self):
+        motors = []
+        for angle in [self.config.motor1_angle, self.config.motor2_angle]:
+            pos = vector_utils.dir_vec(angle) * self.config.motor_radius
+            motor = StepperMotor(pos, self.config.motor_steps, 1, 0.0)
+            motor.align = np.arctan2(-motor.pos[1], -motor.pos[0])
+            motors.append(motor)
+
+        gap = self.config.device_gap + self.config.joystick_radius
+        device = VirtualDevice(motors[0], motors[1], gap,
+                               self.config.joystick_radius)
+        return device
 
     def active(self):
         return not self.run_until.is_set()
