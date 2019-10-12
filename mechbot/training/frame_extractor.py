@@ -32,8 +32,8 @@ for frame, boxes_list, info in annotated_frames(args.video_path, extractors):
 
     width, height, _ = frame.shape
 
-    rel_y0x0y1x1_boxes = [[(y / height, x / height, (y + h) / height,
-        (x + w) / height) for x, y, w, h in boxes] for boxes in boxes_list]
+    rel_y0x0y1x1_boxes = [[(y / height, x / width, (y + h) / height,
+        (x + w) / width) for x, y, w, h in boxes] for boxes in boxes_list]
 
     cv2.imwrite(output_path + ".png", frame)
     with open(output_path + ".txt", "w") as file:

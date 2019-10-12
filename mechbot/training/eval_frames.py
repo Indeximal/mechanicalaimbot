@@ -38,12 +38,18 @@ for filename in label_files:
         boxes = []
         classes = []
         # Heads
-        for box in label[0] + label[2]:
-            boxes.append(box)
-            classes.append(1)  # id for head
-        # Bodies
         for box in label[1] + label[3]:
-            boxes.append(box)
+            y0_, x0, y1_, x1 = box
+            y0 = y0_ * 1920 / 1080  # temporary fix for typo in frame_extractor
+            y1 = y1_ * 1920 / 1080  # temporary fix for typo in frame_extractor
+            boxes.append((y0, x0, y1, x1))
+            classes.append(1)  # id for head, maybe
+        # Bodies
+        for box in label[0] + label[2]:
+            y0_, x0, y1_, x1 = box
+            y0 = y0_ * 1920 / 1080  # temporary fix for typo in frame_extractor
+            y1 = y1_ * 1920 / 1080  # temporary fix for typo in frame_extractor
+            boxes.append((y0, x0, y1, x1))
             classes.append(2)  # id for body
 
         ground_truth_boxes_list.append(np.array(boxes))
@@ -87,4 +93,6 @@ for i in range(len(frames)):
 
     for class_id, score, labels in zip(range(1, len(class_names) + 1), scores, tp_fp_labels):
         num_gt = sum([1 for c in ground_truth_classes_list[i] if c == class_id])
-        print(class_id, metrics.compute_precision_recall(score, labels, num_gt))
+        pres, recall = metrics.compute_precision_recall(score, labels, num_gt)
+        ap = metrics.compute_average_precision(pres, recall)
+        print(i, class_id, ap)
