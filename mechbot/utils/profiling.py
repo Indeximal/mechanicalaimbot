@@ -58,3 +58,14 @@ class MultiStopwatch:
 
     def get_frozen_data(self):
         return StopwatchData(list(self.partials_deque))
+
+
+class Stopwatch:
+    def __init__(self):
+        self.t0 = time.time()
+
+    def get_and_reset(self):
+        t1 = time.time()
+        t = t1 - self.t0
+        self.t0 = t1
+        return t

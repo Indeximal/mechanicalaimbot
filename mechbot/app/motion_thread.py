@@ -1,33 +1,21 @@
 import logging
-import struct
-import enum
 import threading
 import time
 import queue
 
-import serial
 import numpy as np
 
 from mechbot.controller.calibration import CalibrationHelper, AlignmentHelper
 from mechbot.controller.device import VirtualDevice, StepperMotor
 from mechbot.controller.interface import SerialControllerInterface
+from mechbot.controller.joystick_input import JoystickInputThread
 from mechbot.controller.simulator import MechanicalSimulator, SimulatorThread
 from mechbot.utils import vector_utils
-
-
-@enum.unique
-class DeviceStatusEnum(enum.Enum):
-    INITIALIZED = enum.auto()
-    AWAITING_CONNECTION = enum.auto()
-    CONNECTED = enum.auto()
-    CALIBRATING = enum.auto()
-    CALIBRATED = enum.auto()
-    TARGET = enum.auto()
+from mechbot.utils.fields import CsgoTeamEnum
+from mechbot.utils.fields import DeviceStatusEnum
 
 
 class MotionThread(threading.Thread):
-    device: VirtualDevice
-
     def __init__(self, run_until, config):
         super(MotionThread, self).__init__(name="MotionThread")
         self.run_until = run_until
@@ -36,6 +24,7 @@ class MotionThread(threading.Thread):
         self.status_listeners = []
         self.detections_queue = queue.Queue(maxsize=5)
         self.calibrated = False
+        self.team = CsgoTeamEnum(config.default_team)
 
     def run(self):
         with self.setup_interface_context() as interface:
@@ -76,24 +65,116 @@ class MotionThread(threading.Thread):
 
             interface.add_motion_listener(motors_moved)
 
+            joystick_thread = JoystickInputThread(self.run_until, self.config,
+                                                  interface)
+            joystick_thread.start()
+
+            last_target = None
+            last_motion = None
+            last_joystick = np.zeros(2)
+            camera_constant = self.config.initial_camera_constant
+
+            # Loop: Wait for next detection, process, repeat
             while self.active():
-                # Wait for next detection
                 try:
-                    # Might raise queue.Empty
-                    t_start, detections = self.detections_queue.get(timeout=.2)
-                    # Might raise TypeError: cannot unpack None
-                    pos, s1, s2 = self.calculate_target(t_start, detections)
+                    # Timeout and try needed in the case of a shutdown
+                    avg_t, detections = self.detections_queue.get(timeout=.2)
+                except queue.Empty:
+                    continue
 
-                    self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2)
-                    interface.cmd_goto(s1, s2)
+                targets = self.process_detections(detections)
+                joystick_motion = joystick_thread.get_and_reset_total()
+                camera_shift = joystick_motion * camera_constant
 
-                except (queue.Empty, TypeError):
-                    self.send_status(DeviceStatusEnum.TARGET, np.zeros(2),
-                                     0, 0)
+                # No target to aim at
+                if not targets:
+                    last_target = None
+                    last_motion = None
+                    last_joystick = joystick_motion
+                    pos = np.zeros(2)
+                    self.send_status(DeviceStatusEnum.TARGET, pos, 0, 0)
                     interface.cmd_goto(0, 0)
+                    continue
+
+                # TODO: multiple targets
+                target = min(targets, key=vector_utils.vec_len)
+
+                # New target: velocity assumed to be 0
+                if last_target is None:
+                    last_motion = None
+                    needed_input = (- 1 / camera_constant
+                                    * (target + camera_shift))
+                # Existing target: assume velocity is constant
+                else:
+                    target_motion = last_target - target
+                    velocity = target_motion - last_joystick * camera_constant
+                    needed_input = (- 1 / camera_constant
+                                    * (target + camera_shift + velocity))
+
+                    if last_motion is not None:
+                        new_cam_const = ((target_motion - last_motion)
+                                         / (joystick_motion - last_joystick))
+                        # Update camera constant based on a weighted average
+                        alpha = self.config.new_camera_constant_weight
+                        camera_constant = ((1 - alpha) * camera_constant
+                                           + alpha * new_cam_const)
+
+                    last_motion = target_motion
+
+                last_target = target
+
+                # Use the needed joystick input to calculate where to move to
+                # to get the desired motion
+                pos, s1, s2 = self.calculate_target_step(needed_input, avg_t)
+
+                self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2)
+                interface.cmd_goto(s1, s2)
+
+                last_target = target
 
         logging.info("exit")
 
+    def process_detections(self, detections):
+        """detections has form [(ymin, xmin, ymax, xmax), classID]
+        returns a list of pixel offsets from the center
+        """
+
+        # Get IDs for the enemy team
+        if self.team == CsgoTeamEnum.TERRORISTS:
+            head_id = self.config.ct_head_id
+            body_id = self.config.ct_body_id
+        else:  # self.team == CsgoTeamEnum.COUNTER_TERRORISTS:
+            head_id = self.config.t_head_id
+            body_id = self.config.t_body_id
+
+        heads = [box for box, classID in detections if classID == head_id]
+        # TODO: use body information
+        bodies = [box for box, classID in detections if classID == body_id]
+
+        # range [-0.5, 0.5]
+        centers = [np.array([(x_min + x_max), (y_min + y_max)]) / 2. - 0.5 for
+                   (y_min, x_min, y_max, x_max) in heads]
+
+        monitor_size = np.array([self.config.monitor_width,
+                                 self.config.monitor_height])
+
+        # range [-width/2, width/2] and [-height/2, height/2]
+        offsets = [pos * monitor_size for pos in centers]
+
+        return offsets
+
+    def calculate_target_step(self, needed_motion, duration):
+        pos = needed_motion / duration
+        # TODO: Compensate for suboptimal starting point
+
+        if vector_utils.vec_len(pos) > self.config.full_deflection:
+            logging.debug("deflection clamped: not fast enough")
+            pos = vector_utils.unit_vec(pos) * self.config.full_deflection
+
+        s1, s2 = self.device.calculate_steps(pos)
+        return pos, s1, s2
+
+    @DeprecationWarning
     def calculate_target(self, t_start, detections):
         # Position in -0.5 to 0.5 coordinate system for every enemy
         centers = [np.array([(x_min + x_max), (y_min + y_max)]) / 2. - 0.5 for
@@ -109,7 +190,6 @@ class MotionThread(threading.Thread):
         offsets = [pos * monitor_size for pos in centers]
         nearest = min(offsets, key=vector_utils.vec_len)
 
-        # TODO: more intelligent
         # Calculate wanted joystick deflection
         deflection = vector_utils.vec_len(nearest) / (
             (self.config.full_deflection_dist - self.config.min_deflection)
@@ -127,6 +207,7 @@ class MotionThread(threading.Thread):
         return target, s1, s2
 
     def setup_interface_context(self):
+        """prepares the interface context manger to be used based on config"""
         if self.config.use_simulator:
             device = self.device_from_config()
             sim = MechanicalSimulator(device, stick_force=.099)
@@ -166,7 +247,7 @@ class MotionThread(threading.Thread):
 
     def push_detections(self, frame, detections, timings):
         if self.calibrated:
-            self.detections_queue.put((timings.latest_start_time(),
+            self.detections_queue.put((timings.avg_lap_time(),
                                        detections))
 
     def send_status(self, *args):
@@ -175,3 +256,6 @@ class MotionThread(threading.Thread):
 
     def add_status_listener(self, listener):
         self.status_listeners.append(listener)
+
+    def team_selection_listener(self, team):
+        self.team = team

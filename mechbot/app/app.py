@@ -12,6 +12,7 @@ from mechbot.app.inference_thread import InferenceThread
 from mechbot.app.motion_thread import MotionThread
 from mechbot.app.gui_thread import GUIThread
 from mechbot import resources
+from mechbot.utils.fields import CsgoTeamEnum
 
 
 def run():
@@ -36,11 +37,19 @@ def run():
     parser.add("--joystick_number", type=int, required=True)
     parser.add("--joystick_axis_x", type=int, required=True)
     parser.add("--joystick_axis_y", type=int, required=True)
-    parser.add("--target_class_id", type=int, required=True)
+    parser.add("--target_class_id", type=int, required=True)  # TODO remove
+    parser.add("--t_head_id", type=int, required=True)
+    parser.add("--t_body_id", type=int, required=True)
+    parser.add("--ct_head_id", type=int, required=True)
+    parser.add("--ct_body_id", type=int, required=True)
     parser.add("--step_shift", type=int, required=True)
     parser.add("--motor_steps", type=int, required=True)
     parser.add("--device_gap", type=float, required=True)
     parser.add("--min_deflection", type=float, required=True)
+    parser.add("--controller_deadzone", type=float, required=True)
+    parser.add("--joystick_input_dt", type=float, required=True)
+    parser.add("--initial_camera_constant", type=float, required=True)
+    parser.add("--new_camera_constant_weight", type=float, required=True)
     parser.add("--motor_radius", type=float, required=True)
     parser.add("--device_size", type=float, required=True)
     parser.add("--motor1_angle", type=float, required=True)
@@ -59,6 +68,8 @@ def run():
     parser.add("--full_deflection", type=float, required=True)
     parser.add("--rect_color_per_class", type=int, action="append",
                required=True)
+    parser.add("--default_team", required=True,
+               choices=[team.value for team in CsgoTeamEnum])
 
     options = parser.parse_args()
 
@@ -98,13 +109,16 @@ def run():
 
     motion_thread.add_status_listener(gui_thread.push_device_status)
 
-    # TODO: GUI might have to run in main thread for macOS
     gui_thread.add_shutdown_listener(shutdown)
+    gui_thread.add_select_team_listener(motion_thread.team_selection_listener)
 
     # Start threads
     inference_thread.start()
     motion_thread.start()
     gui_thread.start()
+
+    # GUI might have to run in main thread for macOS
+    # gui_thread.run()
 
     begin = time.time()
 

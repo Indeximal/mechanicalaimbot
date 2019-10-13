@@ -7,18 +7,21 @@ import numpy as np
 
 from mechbot.app.motion_thread import DeviceStatusEnum
 from mechbot.utils import pygame_utils
+from mechbot.utils.fields import CsgoTeamEnum
 
 
 class GUIThread(threading.Thread):
     """Thread deticated to running the pygame display"""
     def __init__(self, run_until, config):
         super(GUIThread, self).__init__(name="GUIThread")
+        self.team_selection_listeners = []
         self.run_until = run_until
         self.config = config
         self.shutdown_listeners = []
         self.detection_queue = queue.Queue(maxsize=5)
         self.display_device = None
         self.target_pos = None
+        self.team = CsgoTeamEnum(self.config.default_team)
         self.device_status = "Initializing"
 
     def active(self):
@@ -62,6 +65,16 @@ class GUIThread(threading.Thread):
                     if event.key == pygame.K_ESCAPE:
                         for listener in self.shutdown_listeners:
                             listener()
+                    # Select team ct
+                    if event.key == pygame.K_c:
+                        for listener in self.team_selection_listeners:
+                            self.team = CsgoTeamEnum.COUNTER_TERRORISTS
+                            listener(self.team)
+                    # Select team t
+                    if event.key == pygame.K_t:
+                        for listener in self.team_selection_listeners:
+                            self.team = CsgoTeamEnum.TERRORISTS
+                            listener(self.team)
                 # Resize
                 if event.type == pygame.VIDEORESIZE:
                     screen_size = width, height = event.w, event.h
@@ -100,6 +113,9 @@ class GUIThread(threading.Thread):
                         name, t_min * 1000, t_avg * 1000, t_max * 1000))
             info_display.print("Device status: "
                                + self.device_status.capitalize())
+
+            info_display.print("Your Team: " + self.team.name.capitalize())
+            info_display.print("Press C or T to change team")
 
             # DRAWING
             screen.fill((255, 255, 255))
@@ -143,3 +159,6 @@ class GUIThread(threading.Thread):
             self.target_pos = pos
         else:
             self.device_status = status_type.name
+
+    def add_select_team_listener(self, team_selection_listener):
+        self.team_selection_listeners.append(team_selection_listener)
