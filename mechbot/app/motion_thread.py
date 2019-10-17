@@ -102,7 +102,7 @@ class MotionThread(threading.Thread):
                 # New target: velocity assumed to be 0
                 if last_target is None:
                     last_motion = None
-                    needed_input = (- 1 / camera_constant
+                    needed_input = (-1 / camera_constant
                                     * (target + camera_shift))
                 # Existing target: assume velocity is constant
                 else:
@@ -112,12 +112,18 @@ class MotionThread(threading.Thread):
                                     * (target + camera_shift + velocity))
 
                     if last_motion is not None:
-                        new_cam_const = ((target_motion - last_motion)
-                                         / (joystick_motion - last_joystick))
-                        # Update camera constant based on a weighted average
-                        alpha = self.config.new_camera_constant_weight
-                        camera_constant = ((1 - alpha) * camera_constant
-                                           + alpha * new_cam_const)
+                        # new_cam_const = ((target_motion - last_motion)
+                        #                  / (joystick_motion - last_joystick))
+                        delta_m = target_motion - last_motion
+                        if vector_utils.vec_len(delta_m) != 0.0:
+                            delta_i = joystick_motion - last_joystick
+                            new_cam_const = (np.dot(delta_m, delta_i)
+                                             / vector_utils.vec_len(delta_m))
+                            logging.debug("k=%s", new_cam_const)
+                            # Update cam constant based on a weighted average
+                            alpha = self.config.new_camera_constant_weight
+                            camera_constant = ((1 - alpha) * camera_constant
+                                               + alpha * new_cam_const)
 
                     last_motion = target_motion
 
@@ -131,6 +137,7 @@ class MotionThread(threading.Thread):
                 interface.cmd_goto(s1, s2)
 
                 last_target = target
+                last_joystick = joystick_motion
 
         logging.info("exit")
 
@@ -167,8 +174,17 @@ class MotionThread(threading.Thread):
         pos = needed_motion / duration
         # TODO: Compensate for suboptimal starting point
 
+        # Stay out of the deadzone
+        deadzone = self.config.controller_deadzone
+        x, y = pos
+        if self.config.motion_deadzone < abs(x) < deadzone:
+            x = deadzone if x > 0 else -deadzone
+        if self.config.motion_deadzone < abs(y) < deadzone:
+            y = deadzone if y > 0 else -deadzone
+        pos = np.array([x, y])
+
         if vector_utils.vec_len(pos) > self.config.full_deflection:
-            logging.debug("deflection clamped: not fast enough")
+            # logging.debug("deflection clamped: not fast enough")
             pos = vector_utils.unit_vec(pos) * self.config.full_deflection
 
         s1, s2 = self.device.calculate_steps(pos)

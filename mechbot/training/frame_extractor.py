@@ -30,7 +30,7 @@ for frame, boxes_list, info in annotated_frames(args.video_path, extractors):
     frame_file = frame_id + ".png"
     output_path = os.path.join(args.output_folder, frame_id)
 
-    width, height, _ = frame.shape
+    height, width, _ = frame.shape
 
     rel_y0x0y1x1_boxes = [[(y / height, x / width, (y + h) / height,
         (x + w) / width) for x, y, w, h in boxes] for boxes in boxes_list]
@@ -43,7 +43,6 @@ for frame, boxes_list, info in annotated_frames(args.video_path, extractors):
         for x, y, w, h in boxes:
             # filename,width,height,class,xmin,ymin,xmax,ymax
             csv_rows.append([frame_file, width, height, c_name, x, y, x + w, y + h])
-
 
     print("\r{:>3.0f}%".format(info.get_progress() * 100), end="")
 

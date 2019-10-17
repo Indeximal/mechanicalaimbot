@@ -50,6 +50,7 @@ def run():
     parser.add("--joystick_input_dt", type=float, required=True)
     parser.add("--initial_camera_constant", type=float, required=True)
     parser.add("--new_camera_constant_weight", type=float, required=True)
+    parser.add("--motion_deadzone", type=float, required=True)
     parser.add("--motor_radius", type=float, required=True)
     parser.add("--device_size", type=float, required=True)
     parser.add("--motor1_angle", type=float, required=True)
