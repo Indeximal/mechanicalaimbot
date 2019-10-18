@@ -12,9 +12,6 @@ from mechbot.app.inference_thread import InferenceThread
 from mechbot.app.motion_thread import MotionThread
 from mechbot.app.gui_thread import GUIThread
 from mechbot import resources
-from mechbot.utils.fields import CsgoTeamEnum
-
-
 def run():
     parser = configargparse.ArgParser(
         default_config_files=[resources.DEFAULT_CONFIG])
@@ -37,7 +34,6 @@ def run():
     parser.add("--joystick_number", type=int, required=True)
     parser.add("--joystick_axis_x", type=int, required=True)
     parser.add("--joystick_axis_y", type=int, required=True)
-    parser.add("--target_class_id", type=int, required=True)  # TODO remove
     parser.add("--t_head_id", type=int, required=True)
     parser.add("--t_body_id", type=int, required=True)
     parser.add("--ct_head_id", type=int, required=True)
@@ -45,12 +41,13 @@ def run():
     parser.add("--step_shift", type=int, required=True)
     parser.add("--motor_steps", type=int, required=True)
     parser.add("--device_gap", type=float, required=True)
-    parser.add("--min_deflection", type=float, required=True)
     parser.add("--controller_deadzone", type=float, required=True)
     parser.add("--joystick_input_dt", type=float, required=True)
     parser.add("--initial_camera_constant", type=float, required=True)
     parser.add("--new_camera_constant_weight", type=float, required=True)
     parser.add("--motion_deadzone", type=float, required=True)
+    parser.add("--deadzone_avoidance_radius", type=float, required=True)
+    parser.add("--use_velocity_algorithm", action="store_true")
     parser.add("--motor_radius", type=float, required=True)
     parser.add("--device_size", type=float, required=True)
     parser.add("--motor1_angle", type=float, required=True)
@@ -65,8 +62,13 @@ def run():
     parser.add("--calib_motion_threshold", type=float, required=True)
     parser.add("--calib_wait_ticks", type=int, required=True)
     parser.add("--calib_wait_duration", type=float, required=True)
-    parser.add("--full_deflection_dist", type=float, required=True)
+
     parser.add("--full_deflection", type=float, required=True)
+    parser.add("--text_size", type=int, required=True)
+    parser.add("--text_color", type=int, action="append",
+               required=True)
+    parser.add("--text_bg", type=int, action="append",
+               required=True)
     parser.add("--rect_color_per_class", type=int, action="append",
                required=True)
     parser.add("--default_team", required=True,
@@ -140,6 +142,9 @@ def run():
     # yappi.get_thread_stats().print_all()
 
     logging.info("exit")
+
+
+from mechbot.utils.fields import CsgoTeamEnum
 
 
 if __name__ == "__main__":

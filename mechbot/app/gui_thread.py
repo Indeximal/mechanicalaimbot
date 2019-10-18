@@ -51,11 +51,13 @@ class GUIThread(threading.Thread):
 
         device_camera = create_camera()
 
-        info_display = pygame_utils.LineWriter(20, 20, color=(204, 20, 20))
+        info_display = pygame_utils.LineWriter(20, 20,
+                                               color=self.config.text_color,
+                                               size=self.config.text_size,
+                                               bg_color=self.config.text_bg)
 
         while self.active():
             for event in pygame.event.get():
-                # TODO: Click to aim
                 if event.type == pygame.QUIT: 
                     for listener in self.shutdown_listeners:
                         listener()

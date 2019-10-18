@@ -40,7 +40,6 @@ class MotionThread(threading.Thread):
 
             time.sleep(.5)  # Wait a little
 
-            # TODO: Figure out which motor is which
             # calibrator = self.setup_calibrator(interface)
             # calibrator.start()
             #
@@ -82,6 +81,7 @@ class MotionThread(threading.Thread):
                 except queue.Empty:
                     continue
 
+                # Grab targets as points and get the joystick motion
                 targets = self.process_detections(detections)
                 joystick_motion = joystick_thread.get_and_reset_total()
                 camera_shift = joystick_motion * camera_constant
@@ -100,10 +100,13 @@ class MotionThread(threading.Thread):
                 target = min(targets, key=vector_utils.vec_len)
 
                 # New target: velocity assumed to be 0
-                if last_target is None:
+                if ((not self.config.use_velocity_algorithm)
+                        or (last_target is None)):
                     last_motion = None
+                    # this actually works.
                     needed_input = (-1 / camera_constant
                                     * (target + camera_shift))
+                    # needed_input = -1 / camera_constant * target
                 # Existing target: assume velocity is constant
                 else:
                     target_motion = last_target - target
@@ -112,8 +115,8 @@ class MotionThread(threading.Thread):
                                     * (target + camera_shift + velocity))
 
                     if last_motion is not None:
-                        # new_cam_const = ((target_motion - last_motion)
-                        #                  / (joystick_motion - last_joystick))
+                        # weird calculation to get the camera constant
+                        # probably not good
                         delta_m = target_motion - last_motion
                         if vector_utils.vec_len(delta_m) != 0.0:
                             delta_i = joystick_motion - last_joystick
@@ -127,10 +130,8 @@ class MotionThread(threading.Thread):
 
                     last_motion = target_motion
 
-                last_target = target
-
                 # Use the needed joystick input to calculate where to move to
-                # to get the desired motion
+                # to get the desired motion.
                 pos, s1, s2 = self.calculate_target_step(needed_input, avg_t)
 
                 self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2)
@@ -138,6 +139,8 @@ class MotionThread(threading.Thread):
 
                 last_target = target
                 last_joystick = joystick_motion
+
+            interface.cmd_goto(0, 0)
 
         logging.info("exit")
 
@@ -176,51 +179,25 @@ class MotionThread(threading.Thread):
 
         # Stay out of the deadzone
         deadzone = self.config.controller_deadzone
+        min_xy = self.config.deadzone_avoidance_radius
         x, y = pos
         if self.config.motion_deadzone < abs(x) < deadzone:
-            x = deadzone if x > 0 else -deadzone
+            x = min_xy if x > 0 else -min_xy
         if self.config.motion_deadzone < abs(y) < deadzone:
-            y = deadzone if y > 0 else -deadzone
+            y = min_xy if y > 0 else -min_xy
         pos = np.array([x, y])
 
         if vector_utils.vec_len(pos) > self.config.full_deflection:
-            # logging.debug("deflection clamped: not fast enough")
+            logging.debug("deflection clamped: not fast enough")
             pos = vector_utils.unit_vec(pos) * self.config.full_deflection
+
+        if self.config.invert_y:
+            pos[1] *= -1
+
+        pos *= -1  # Somehow everything is inverted, so I fixed it.
 
         s1, s2 = self.device.calculate_steps(pos)
         return pos, s1, s2
-
-    @DeprecationWarning
-    def calculate_target(self, t_start, detections):
-        # Position in -0.5 to 0.5 coordinate system for every enemy
-        centers = [np.array([(x_min + x_max), (y_min + y_max)]) / 2. - 0.5 for
-                   (y_min, x_min, y_max, x_max), class_id in detections if
-                   class_id == self.config.target_class_id]
-        monitor_size = np.array([self.config.monitor_width,
-                                 self.config.monitor_height])
-
-        if not centers:
-            return None
-
-        # Offset in pixels from crosshair
-        offsets = [pos * monitor_size for pos in centers]
-        nearest = min(offsets, key=vector_utils.vec_len)
-
-        # Calculate wanted joystick deflection
-        deflection = vector_utils.vec_len(nearest) / (
-            (self.config.full_deflection_dist - self.config.min_deflection)
-            + self.config.min_deflection)
-
-        if deflection > self.config.full_deflection:
-            deflection = self.config.full_deflection
-        # invert y if necessary
-        angle = np.arctan2((-1 if self.config.invert_y else 1) * nearest[1],
-                           nearest[0])
-        target = vector_utils.dir_vec(angle) * deflection
-
-        s1, s2 = self.device.calculate_steps(target)
-
-        return target, s1, s2
 
     def setup_interface_context(self):
         """prepares the interface context manger to be used based on config"""
