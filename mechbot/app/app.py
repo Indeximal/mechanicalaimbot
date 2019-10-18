@@ -7,7 +7,7 @@ from pathlib import Path
 import configargparse
 import numpy as np
 # import yappi
-
+from mechbot.app.debug_inference import DebugInferenceThread
 from mechbot.app.inference_thread import InferenceThread
 from mechbot.app.motion_thread import MotionThread
 from mechbot.app.gui_thread import GUIThread
@@ -53,6 +53,7 @@ def run():
     parser.add("--motor1_angle", type=float, required=True)
     parser.add("--motor2_angle", type=float, required=True)
     parser.add("--use_simulator", action="store_true")
+    parser.add("--use_debug_detection", action="store_true")
     parser.add("--invert_y", action="store_true")
     parser.add("--debug_output", action="store_true")
     parser.add("--simulator_dt", type=float, required=True)
@@ -62,8 +63,8 @@ def run():
     parser.add("--calib_motion_threshold", type=float, required=True)
     parser.add("--calib_wait_ticks", type=int, required=True)
     parser.add("--calib_wait_duration", type=float, required=True)
-
     parser.add("--full_deflection", type=float, required=True)
+    parser.add("--pink_class_id", type=int, required=True)
     parser.add("--text_size", type=int, required=True)
     parser.add("--text_color", type=int, action="append",
                required=True)
@@ -101,8 +102,12 @@ def run():
     # signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
 
-    inference_thread = InferenceThread(run_until=shutdown_event,
-                                       config=options)
+    if options.use_debug_detection:
+        inference_thread = DebugInferenceThread(run_until=shutdown_event,
+                                                config=options)
+    else:
+        inference_thread = InferenceThread(run_until=shutdown_event,
+                                           config=options)
     motion_thread = MotionThread(run_until=shutdown_event, config=options)
     gui_thread = GUIThread(run_until=shutdown_event, config=options)
 
