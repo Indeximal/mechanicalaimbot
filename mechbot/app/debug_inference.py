@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 
 import numpy as np
 import mss
@@ -47,6 +48,8 @@ class DebugInferenceThread(threading.Thread):
 
                 # Run extraction
                 results = extractor.extract(image)
+                # artificial slow down
+                time.sleep(self.config.pink_slow_down)
 
                 boxes = [np.array(
                     [y / im_height, x / im_width, (y + h) / im_height,

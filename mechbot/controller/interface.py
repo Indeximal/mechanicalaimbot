@@ -11,17 +11,18 @@ import serial.threaded
 class SerialProtocol(serial.threaded.Packetizer):
     def __init__(self):
         super().__init__()
-        self.alive = True
+        self.alive = False
         self.shift = 0
         self.motion_listeners = []
 
     def connection_made(self, transport):
         super(SerialProtocol, self).connection_made(transport)
         logging.info("connection made")
+        self.alive = True
         transport.write(struct.pack("BBBB", 0xff, 0xff, 0xff, 0x00))
 
     def handle_packet(self, packet):
-        logging.debug(packet)
+        # logging.debug(packet)
         if not packet:
             logging.warning("received empty message!")
             return

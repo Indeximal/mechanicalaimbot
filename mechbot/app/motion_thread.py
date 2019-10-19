@@ -64,6 +64,10 @@ class MotionThread(threading.Thread):
 
             interface.add_motion_listener(motors_moved)
 
+            # for x in np.arange(0.1, 1, 0.1):
+            #     self.move(interface, np.array([x, 0.0]))
+            #     pass  # Code to test the joystick curve with debugging
+
             joystick_thread = JoystickInputThread(self.run_until, self.config,
                                                   interface)
             joystick_thread.start()
@@ -92,8 +96,7 @@ class MotionThread(threading.Thread):
                     last_motion = None
                     last_joystick = joystick_motion
                     pos = np.zeros(2)
-                    self.send_status(DeviceStatusEnum.TARGET, pos, 0, 0)
-                    interface.cmd_goto(0, 0)
+                    self.move(interface, pos)
                     continue
 
                 # TODO: multiple targets
@@ -132,10 +135,9 @@ class MotionThread(threading.Thread):
 
                 # Use the needed joystick input to calculate where to move to
                 # to get the desired motion.
-                pos, s1, s2 = self.calculate_target_step(needed_input, avg_t)
+                pos = self.calculate_target(needed_input, avg_t)
 
-                self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2)
-                interface.cmd_goto(s1, s2)
+                self.move(interface, pos)
 
                 last_target = target
                 last_joystick = joystick_motion
@@ -143,6 +145,19 @@ class MotionThread(threading.Thread):
             interface.cmd_goto(0, 0)
 
         logging.info("exit")
+
+    def move(self, interface, pos):
+        if self.config.invert_y:
+            pos[1] *= -1
+
+        if pos[0] == pos[1] == 0:
+            s1 = 0
+            s2 = 0
+        else:
+            s1, s2 = self.device.calculate_steps(pos)
+        self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2)
+
+        interface.cmd_goto(s1, s2)
 
     def process_detections(self, detections):
         """detections has form [(ymin, xmin, ymax, xmax), classID]
@@ -173,7 +188,7 @@ class MotionThread(threading.Thread):
 
         return offsets
 
-    def calculate_target_step(self, needed_motion, duration):
+    def calculate_target(self, needed_motion, duration):
         pos = needed_motion / duration
         # TODO: Compensate for suboptimal starting point
 
@@ -191,13 +206,9 @@ class MotionThread(threading.Thread):
             logging.debug("deflection clamped: not fast enough")
             pos = vector_utils.unit_vec(pos) * self.config.full_deflection
 
-        if self.config.invert_y:
-            pos[1] *= -1
-
         pos *= -1  # Somehow everything is inverted, so I fixed it.
 
-        s1, s2 = self.device.calculate_steps(pos)
-        return pos, s1, s2
+        return pos
 
     def setup_interface_context(self):
         """prepares the interface context manger to be used based on config"""

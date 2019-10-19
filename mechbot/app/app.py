@@ -12,6 +12,8 @@ from mechbot.app.inference_thread import InferenceThread
 from mechbot.app.motion_thread import MotionThread
 from mechbot.app.gui_thread import GUIThread
 from mechbot import resources
+
+
 def run():
     parser = configargparse.ArgParser(
         default_config_files=[resources.DEFAULT_CONFIG])
@@ -65,6 +67,7 @@ def run():
     parser.add("--calib_wait_duration", type=float, required=True)
     parser.add("--full_deflection", type=float, required=True)
     parser.add("--pink_class_id", type=int, required=True)
+    parser.add("--pink_slow_down", type=float, required=True)
     parser.add("--text_size", type=int, required=True)
     parser.add("--text_color", type=int, action="append",
                required=True)
