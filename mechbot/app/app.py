@@ -2,98 +2,22 @@ import threading
 import signal
 import logging
 import time
-from pathlib import Path
 
-import configargparse
-import numpy as np
 # import yappi
+from mechbot.app import configuration
 from mechbot.app.debug_inference import DebugInferenceThread
 from mechbot.app.inference_thread import InferenceThread
 from mechbot.app.motion_thread import MotionThread
 from mechbot.app.gui_thread import GUIThread
-from mechbot import resources
 
 
 def run():
-    parser = configargparse.ArgParser(
-        default_config_files=[resources.DEFAULT_CONFIG])
-
-    parser.add("-c", "--config", is_config_file=True, help="config file path")
-    parser.add("--serial_port", type=str, required=True)
-    parser.add("--serial_baud", type=int, required=True)
-    parser.add("--display_width", type=int, required=True)
-    parser.add("--display_height", type=int, required=True)
-    parser.add("--inference_graph", type=str, required=True)
-    parser.add("--inference_input_format", type=str, required=True,
-               choices=["RGB", "BGRA"])
-    parser.add("--display_name", type=str, required=True)
-    parser.add("--display_fps", type=int, required=True)
-    parser.add("--score_thresh", type=float, required=True)
-    parser.add("--monitor_number", type=int, required=True)
-    parser.add("--monitor_width", type=int, required=True)
-    parser.add("--monitor_height", type=int, required=True)
-    parser.add("--rect_width", type=int, required=True)
-    parser.add("--joystick_number", type=int, required=True)
-    parser.add("--joystick_axis_x", type=int, required=True)
-    parser.add("--joystick_axis_y", type=int, required=True)
-    parser.add("--t_head_id", type=int, required=True)
-    parser.add("--t_body_id", type=int, required=True)
-    parser.add("--ct_head_id", type=int, required=True)
-    parser.add("--ct_body_id", type=int, required=True)
-    parser.add("--step_shift", type=int, required=True)
-    parser.add("--motor_steps", type=int, required=True)
-    parser.add("--device_gap", type=float, required=True)
-    parser.add("--controller_deadzone", type=float, required=True)
-    parser.add("--joystick_input_dt", type=float, required=True)
-    parser.add("--initial_camera_constant", type=float, required=True)
-    parser.add("--new_camera_constant_weight", type=float, required=True)
-    parser.add("--motion_deadzone", type=float, required=True)
-    parser.add("--deadzone_avoidance_radius", type=float, required=True)
-    parser.add("--use_velocity_algorithm", action="store_true")
-    parser.add("--motor_radius", type=float, required=True)
-    parser.add("--device_size", type=float, required=True)
-    parser.add("--motor1_angle", type=float, required=True)
-    parser.add("--motor2_angle", type=float, required=True)
-    parser.add("--use_simulator", action="store_true")
-    parser.add("--use_debug_detection", action="store_true")
-    parser.add("--invert_y", action="store_true")
-    parser.add("--debug_output", action="store_true")
-    parser.add("--simulator_dt", type=float, required=True)
-    parser.add("--calib_max_deflection", type=float, required=True)
-    parser.add("--calib_center_threshold", type=float, required=True)
-    parser.add("--joystick_radius", type=float, required=True)
-    parser.add("--calib_motion_threshold", type=float, required=True)
-    parser.add("--calib_wait_ticks", type=int, required=True)
-    parser.add("--calib_wait_duration", type=float, required=True)
-    parser.add("--full_deflection", type=float, required=True)
-    parser.add("--pink_class_id", type=int, required=True)
-    parser.add("--pink_slow_down", type=float, required=True)
-    parser.add("--text_size", type=int, required=True)
-    parser.add("--text_color", type=int, action="append",
-               required=True)
-    parser.add("--text_bg", type=int, action="append",
-               required=True)
-    parser.add("--rect_color_per_class", type=int, action="append",
-               required=True)
-    parser.add("--default_team", required=True,
-               choices=[team.value for team in CsgoTeamEnum])
-
-    options = parser.parse_args()
+    options = configuration.parse_config()
 
     level = logging.DEBUG if options.debug_output else logging.INFO
     fmt = "%(levelname)s (%(threadName)s): %(message)s"
     logging.basicConfig(level=level, format=fmt)
     logging.debug(options)
-
-    # Handle special cases for paths and 2d arrays in options
-    options.rect_color_per_class = np.array(
-        options.rect_color_per_class).reshape(-1, 3)
-
-    if options.inference_graph.startswith("resources."):
-        inference_path = vars(resources)[options.inference_graph[10:]]
-    else:
-        inference_path = str(Path(options.inference_graph))
-    options.inference_graph = inference_path
 
     # Proper shutdown
     shutdown_event = threading.Event()

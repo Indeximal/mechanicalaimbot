@@ -5,6 +5,7 @@ import queue
 
 import numpy as np
 
+from mechbot.app import configuration
 from mechbot.controller.calibration import CalibrationHelper, AlignmentHelper
 from mechbot.controller.device import VirtualDevice, StepperMotor
 from mechbot.controller.interface import SerialControllerInterface
@@ -27,7 +28,7 @@ class MotionThread(threading.Thread):
         self.team = CsgoTeamEnum(config.default_team)
 
     def run(self):
-        with self.setup_interface_context() as interface:
+        with configuration.setup_interface_context(self.config) as interface:
             self.send_status(DeviceStatusEnum.AWAITING_CONNECTION)
             while self.active() and not interface.is_alive():
                 self.send_status(DeviceStatusEnum.AWAITING_CONNECTION)
@@ -52,7 +53,7 @@ class MotionThread(threading.Thread):
             #     logging.info("exit")
             #     return
 
-            self.device = self.device_from_config()
+            self.device = configuration.setup_device(self.config)
             # calibrator.apply_to_device(self.device)
 
             self.calibrated = True
@@ -203,48 +204,12 @@ class MotionThread(threading.Thread):
         pos = np.array([x, y])
 
         if vector_utils.vec_len(pos) > self.config.full_deflection:
-            logging.debug("deflection clamped: not fast enough")
+            # logging.debug("deflection clamped: not fast enough")
             pos = vector_utils.unit_vec(pos) * self.config.full_deflection
 
         pos *= -1  # Somehow everything is inverted, so I fixed it.
 
         return pos
-
-    def setup_interface_context(self):
-        """prepares the interface context manger to be used based on config"""
-        if self.config.use_simulator:
-            device = self.device_from_config()
-            sim = MechanicalSimulator(device, stick_force=.099)
-            return SimulatorThread(sim, self.config.simulator_dt)
-        else:
-            return SerialControllerInterface(self.config.serial_port,
-                                             self.config.serial_baud,
-                                             self.config.joystick_number,
-                                             self.config.joystick_axis_x,
-                                             self.config.joystick_axis_y,
-                                             self.config.step_shift)
-
-    def setup_calibrator(self, interface):
-        options = vars(self.config)
-        # Extracts all options named "calib_" from config and uses them as key
-        # word args
-        kwargs = dict(
-            [(k[6:], options[k]) for k in options if k.startswith("calib_")])
-
-        return AlignmentHelper(interface, **kwargs)
-
-    def device_from_config(self):
-        motors = []
-        for angle in [self.config.motor1_angle, self.config.motor2_angle]:
-            pos = vector_utils.dir_vec(angle) * self.config.motor_radius
-            motor = StepperMotor(pos, self.config.motor_steps, 1, 0.0)
-            motor.align = np.arctan2(-motor.pos[1], -motor.pos[0])
-            motors.append(motor)
-
-        gap = self.config.device_gap + self.config.joystick_radius
-        device = VirtualDevice(motors[0], motors[1], gap,
-                               self.config.joystick_radius)
-        return device
 
     def active(self):
         return not self.run_until.is_set()
