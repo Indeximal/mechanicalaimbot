@@ -6,11 +6,7 @@ import queue
 import numpy as np
 
 from mechbot.app import configuration
-from mechbot.controller.calibration import CalibrationHelper, AlignmentHelper
-from mechbot.controller.device import VirtualDevice, StepperMotor
-from mechbot.controller.interface import SerialControllerInterface
 from mechbot.controller.joystick_input import JoystickInputThread
-from mechbot.controller.simulator import MechanicalSimulator, SimulatorThread
 from mechbot.utils import vector_utils
 from mechbot.utils.fields import CsgoTeamEnum
 from mechbot.utils.fields import DeviceStatusEnum
@@ -32,29 +28,14 @@ class MotionThread(threading.Thread):
             self.send_status(DeviceStatusEnum.AWAITING_CONNECTION)
             while self.active() and not interface.is_alive():
                 self.send_status(DeviceStatusEnum.AWAITING_CONNECTION)
-                time.sleep(.1)
+                time.sleep(.02)
             if not self.active():
                 logging.info("exit")
                 return  # exit on shutdown during initialization
 
             self.send_status(DeviceStatusEnum.CONNECTED)
 
-            time.sleep(.5)  # Wait a little
-
-            # calibrator = self.setup_calibrator(interface)
-            # calibrator.start()
-            #
-            # # Calibrate
-            # while self.active() and not calibrator.is_done():
-            #     self.send_status(DeviceStatusEnum.CALIBRATING)
-            #     calibrator.tick()
-            #     time.sleep(.01)
-            # if not self.active():
-            #     logging.info("exit")
-            #     return
-
             self.device = configuration.setup_device(self.config)
-            # calibrator.apply_to_device(self.device)
 
             self.calibrated = True
             self.send_status(DeviceStatusEnum.CALIBRATED, self.device)
@@ -88,42 +69,52 @@ class MotionThread(threading.Thread):
 
                 # Grab targets as points and get the joystick motion
                 targets = self.process_detections(detections)
-                joystick_motion = joystick_thread.get_and_reset_total()
-                camera_shift = joystick_motion * camera_constant
+                joystick_input = joystick_thread.get_and_reset_total()
+                camera_motion = - joystick_input * camera_constant  # [pxl]
 
                 # No target to aim at
                 if not targets:
                     last_target = None
                     last_motion = None
-                    last_joystick = joystick_motion
-                    pos = np.zeros(2)
-                    self.move(interface, pos)
+                    last_joystick = joystick_input
+                    self.move(interface, np.zeros(2))
                     continue
 
+                # Predict where the targets are now, because the information
+                # we have is one inference frame old (~80ms). This can be done
+                # by using the joystick and approximation how much the camera
+                # has moved.
+                targets_now = [target + camera_motion for target in targets]
+
                 # TODO: multiple targets
-                target = min(targets, key=vector_utils.vec_len)
+                target_now = min(targets_now, key=vector_utils.vec_len)
+                target = target_now - camera_motion
 
                 # New target: velocity assumed to be 0
-                if ((not self.config.use_velocity_algorithm)
-                        or (last_target is None)):
+                if (not self.config.use_velocity_algorithm
+                        or last_target is None):
+                    needed_input = 1 / camera_constant * target_now
                     last_motion = None
-                    # this actually works.
-                    needed_input = (-1 / camera_constant
-                                    * (target + camera_shift))
-                    # needed_input = -1 / camera_constant * target
+
                 # Existing target: assume velocity is constant
                 else:
+                    # TODO Fix or test
                     target_motion = last_target - target
                     velocity = target_motion - last_joystick * camera_constant
-                    needed_input = (- 1 / camera_constant
-                                    * (target + camera_shift + velocity))
+                    needed_input = (1 / camera_constant
+                                    * (target + camera_motion + velocity))
+
+                    # camera =
+                    #
+                    # last_camera = target_motion - last_joystick * camera_constant
+                    # sensitivity_2d = camera / last_joystick
 
                     if last_motion is not None:
                         # weird calculation to get the camera constant
                         # probably not good
                         delta_m = target_motion - last_motion
                         if vector_utils.vec_len(delta_m) != 0.0:
-                            delta_i = joystick_motion - last_joystick
+                            delta_i = joystick_input - last_joystick
                             new_cam_const = (np.dot(delta_m, delta_i)
                                              / vector_utils.vec_len(delta_m))
                             logging.debug("k=%s", new_cam_const)
@@ -134,37 +125,27 @@ class MotionThread(threading.Thread):
 
                     last_motion = target_motion
 
+                # Overshooting is a bigger problem than overshooting, so we
+                # prevent it by multiplying with a constant smaller than 1.
+                needed_input *= self.config.aim_dampening
+
                 # Use the needed joystick input to calculate where to move to
                 # to get the desired motion.
-                pos = self.calculate_target(needed_input, avg_t)
-
+                pos = self.calculate_target(needed_input, avg_t,
+                                            interface.get_input())
                 self.move(interface, pos)
 
                 last_target = target
-                last_joystick = joystick_motion
+                last_joystick = joystick_input
 
             interface.cmd_goto(0, 0)
 
         logging.info("exit")
 
-    def move(self, interface, pos):
-        if self.config.invert_y:
-            pos[1] *= -1
-
-        if pos[0] == pos[1] == 0:
-            s1 = 0
-            s2 = 0
-        else:
-            s1, s2 = self.device.calculate_steps(pos)
-        self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2)
-
-        interface.cmd_goto(s1, s2)
-
     def process_detections(self, detections):
         """detections has form [(ymin, xmin, ymax, xmax), classID]
         returns a list of pixel offsets from the center
         """
-
         # Get IDs for the enemy team
         if self.team == CsgoTeamEnum.TERRORISTS:
             head_id = self.config.ct_head_id
@@ -189,9 +170,59 @@ class MotionThread(threading.Thread):
 
         return offsets
 
-    def calculate_target(self, needed_motion, duration):
+    def calculate_target(self, needed_motion, timespan, current_pos):
+        sensitivity_func = configuration.setup_sensitivity_curve(self.config)
+        inv_func = configuration.setup_inverse_sensitivity_curve(self.config)
+        max_speed = sensitivity_func(self.config.full_deflection)
+
+        pos = []  # will be filled with x and y coords
+
+        # for both components x and y
+        for needed_mov, current_defl in zip(needed_motion, current_pos):
+            current_speed = sensitivity_func(current_defl)
+            needed_speed = needed_mov / timespan
+
+            # # TODO: not based on speed but deflection
+            # movement_distance = abs(current_speed - needed_speed)
+            # movement_time = movement_distance / self.config.controller_speed
+            #
+            # duration = timespan - movement_time
+            # if duration < 0:
+            #     duration = timespan
+            #     # TODO figure out what to do
+            #     logging.debug("not able to reach")
+            #
+            # # improve the accuracy by doing another iteration
+            # # TODO only accurate when switching sides
+            # needed_speed = needed_mov / duration
+
+            needed_speed = np.clip(needed_speed, -max_speed, max_speed)
+            needed_defl = inv_func(needed_speed)
+
+            pos.append(needed_defl)
+
+        if vector_utils.vec_len(pos) > self.config.full_deflection:
+            # logging.debug("deflection clamped: not fast enough")
+            pos = vector_utils.unit_vec(pos) * self.config.full_deflection
+
+        return pos
+
+    def move(self, interface, pos):
+        if self.config.invert_y:
+            pos[1] *= -1
+
+        if pos[0] == pos[1] == 0:
+            s1 = 0
+            s2 = 0
+        else:
+            s1, s2 = self.device.calculate_steps(pos)
+        self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2)
+
+        interface.cmd_goto(s1, s2)
+
+    # TODO Remove
+    def calculate_target_old(self, needed_motion, duration):
         pos = needed_motion / duration
-        # TODO: Compensate for suboptimal starting point
 
         # Stay out of the deadzone
         deadzone = self.config.controller_deadzone
@@ -211,20 +242,19 @@ class MotionThread(threading.Thread):
 
         return pos
 
+    def send_status(self, *args):
+        for listener in self.status_listeners:
+            listener(*args)
+
     def active(self):
         return not self.run_until.is_set()
 
     def push_detections(self, frame, detections, timings):
         if self.calibrated:
-            self.detections_queue.put((timings.avg_lap_time(),
-                                       detections))
-
-    def send_status(self, *args):
-        for listener in self.status_listeners:
-            listener(*args)
-
-    def add_status_listener(self, listener):
-        self.status_listeners.append(listener)
+            self.detections_queue.put((timings.avg_lap_time(), detections))
 
     def team_selection_listener(self, team):
         self.team = team
+
+    def add_status_listener(self, listener):
+        self.status_listeners.append(listener)

@@ -64,8 +64,10 @@ def parse_config():
     parser.add("--calib_wait_ticks", type=int, required=True)
     parser.add("--calib_wait_duration", type=float, required=True)
     parser.add("--full_deflection", type=float, required=True)
+    parser.add("--controller_speed", type=float, required=True)
     parser.add("--pink_class_id", type=int, required=True)
     parser.add("--pink_slow_down", type=float, required=True)
+    parser.add("--aim_dampening", type=float, required=True)
     parser.add("--text_size", type=int, required=True)
     parser.add("--text_color", type=int, action="append",
                required=True)
@@ -94,6 +96,7 @@ def parse_config():
     config.inference_graph = inference_path
 
     return config
+
 
 def setup_interface_context(config):
     """prepares the interface context manager to be used based on config"""
@@ -135,14 +138,34 @@ def setup_device(config):
 
 
 def setup_sensitivity_curve(config):
+    """returns a function with signature (deflection) -> (angular speed)"""
     a = config.sigmoid_steepness
     b = config.sigmoid_max
     c = config.sigmoid_offset
-    return lambda x: b / (1 + np.exp(-a*x + c))
+
+    def sigmoid(x):
+        return b / (1 + np.exp(-a * x + c))
+
+    return lambda x: np.sign(x) * sigmoid(np.abs(x))
 
 
 def setup_inverse_sensitivity_curve(config):
+    """returns a function with signature (angular speed) -> (deflection)"""
     a = config.sigmoid_steepness
     b = config.sigmoid_max
     c = config.sigmoid_offset
-    return lambda y: (-np.log(b/y - 1) + c) / a
+
+    def inv_sigmoid(y):
+        return (-np.log(b / y - 1) + c) / a
+
+    def curve(y):
+        if y > 0:
+            x = inv_sigmoid(y)
+            return np.maximum(x, 0)
+        elif y == 0:
+            return 0
+        else:
+            x = -inv_sigmoid(-y)
+            return np.minimum(x, 0)
+
+    return curve

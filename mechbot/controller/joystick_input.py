@@ -2,8 +2,8 @@ import threading
 import time
 
 import numpy as np
-import pygame
 
+from mechbot.app import configuration
 from mechbot.utils.profiling import Stopwatch
 
 
@@ -20,14 +20,16 @@ class JoystickInputThread(threading.Thread):
 
     def run(self):
         stopwatch = Stopwatch()
+        sensitivity_curve = configuration.setup_sensitivity_curve(self.config)
 
         while not self.run_until.is_set():
             raw_input = self.interface.get_input()
-            deadzone = self.config.controller_deadzone
-            # Values below the deadzone are interpreted as 0 input on that axis
-            j_input = (np.absolute(raw_input) > deadzone) * raw_input
+            angular_speed = sensitivity_curve(raw_input)  # [360°/s]
+
+            delta_t = stopwatch.get_and_reset()
             with self.total_lock:
-                self.total_motion += j_input * stopwatch.get_and_reset()
+                # [360°] = [360°/s] * [s]
+                self.total_motion += angular_speed * delta_t
 
             time.sleep(self.delta_time)
 
