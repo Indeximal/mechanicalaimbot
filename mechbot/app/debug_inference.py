@@ -28,7 +28,8 @@ class DebugInferenceThread(threading.Thread):
         profiler = profiling.MultiStopwatch(maxlaps=10)
 
         # Helper to extract pink boxes from a frame
-        extractor = ColoredBoxExtractor((200, 0, 200), (255, 50, 255), 210)
+        area = self.config.pink_min_area
+        extractor = ColoredBoxExtractor((200, 0, 200), (255, 50, 255), area)
 
         with mss.mss() as sct:
             while not self.run_until.is_set():

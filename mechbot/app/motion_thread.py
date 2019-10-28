@@ -57,6 +57,7 @@ class MotionThread(threading.Thread):
             last_target = None
             last_motion = None
             last_joystick = np.zeros(2)
+            pre_last_joystick = np.zeros(2)
             camera_constant = self.config.initial_camera_constant
 
             # Loop: Wait for next detection, process, repeat
@@ -71,11 +72,13 @@ class MotionThread(threading.Thread):
                 targets = self.process_detections(detections)
                 joystick_input = joystick_thread.get_and_reset_total()
                 camera_motion = - joystick_input * camera_constant  # [pxl]
+                camera_motion *= self.config.camera_shift_influence
 
                 # No target to aim at
                 if not targets:
                     last_target = None
                     last_motion = None
+                    pre_last_joystick = last_joystick
                     last_joystick = joystick_input
                     self.move(interface, np.zeros(2))
                     continue
@@ -102,21 +105,17 @@ class MotionThread(threading.Thread):
                     target_motion = last_target - target
                     velocity = target_motion - last_joystick * camera_constant
                     needed_input = (1 / camera_constant
-                                    * (target + camera_motion + velocity))
-
-                    # camera =
-                    #
-                    # last_camera = target_motion - last_joystick * camera_constant
-                    # sensitivity_2d = camera / last_joystick
+                                    * (target_now + velocity))
 
                     if last_motion is not None:
                         # weird calculation to get the camera constant
                         # probably not good
+                        delta_i = last_joystick - pre_last_joystick
                         delta_m = target_motion - last_motion
-                        if vector_utils.vec_len(delta_m) != 0.0:
-                            delta_i = joystick_input - last_joystick
+                        if vector_utils.vec_len(delta_i) != 0.0:
                             new_cam_const = (np.dot(delta_m, delta_i)
-                                             / vector_utils.vec_len(delta_m))
+                                             / (vector_utils.vec_len(delta_i)
+                                             ** 2))
                             logging.debug("k=%s", new_cam_const)
                             # Update cam constant based on a weighted average
                             alpha = self.config.new_camera_constant_weight
@@ -135,8 +134,9 @@ class MotionThread(threading.Thread):
                                             interface.get_input())
                 self.move(interface, pos)
 
-                last_target = target
+                pre_last_joystick = last_joystick
                 last_joystick = joystick_input
+                last_target = target
 
             interface.cmd_goto(0, 0)
 
@@ -155,8 +155,13 @@ class MotionThread(threading.Thread):
             body_id = self.config.t_body_id
 
         heads = [box for box, classID in detections if classID == head_id]
-        # TODO: use body information
         bodies = [box for box, classID in detections if classID == body_id]
+
+        a0 = self.config.body_target_height
+        a1 = 1 - a0
+        body_centers = [np.array([(x_min + x_max) / 2,
+                                  y_min * a0 + y_max * a1]) for
+                        (y_min, x_min, y_max, x_max) in bodies]
 
         # range [-0.5, 0.5]
         centers = [np.array([(x_min + x_max), (y_min + y_max)]) / 2. - 0.5 for
@@ -166,7 +171,7 @@ class MotionThread(threading.Thread):
                                  self.config.monitor_height])
 
         # range [-width/2, width/2] and [-height/2, height/2]
-        offsets = [pos * monitor_size for pos in centers]
+        offsets = [pos * monitor_size for pos in centers + body_centers]
 
         return offsets
 
@@ -181,6 +186,10 @@ class MotionThread(threading.Thread):
         for needed_mov, current_defl in zip(needed_motion, current_pos):
             current_speed = sensitivity_func(current_defl)
             needed_speed = needed_mov / timespan
+
+            if abs(needed_speed) < self.config.movement_threshold:
+                pos.append(0.0)
+                continue
 
             # # TODO: not based on speed but deflection
             # movement_distance = abs(current_speed - needed_speed)
@@ -216,7 +225,8 @@ class MotionThread(threading.Thread):
             s2 = 0
         else:
             s1, s2 = self.device.calculate_steps(pos)
-        self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2)
+        current_pos = interface.get_input()
+        self.send_status(DeviceStatusEnum.TARGET, pos, s1, s2, current_pos)
 
         interface.cmd_goto(s1, s2)
 

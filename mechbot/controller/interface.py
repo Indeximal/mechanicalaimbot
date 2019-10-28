@@ -88,7 +88,7 @@ class SerialControllerInterface:
         s1 = step_1 + self.shift
         s2 = step_2 + self.shift
         self.serial_thread.write(struct.pack("BBBB", 0x01, s1, s2, 0x00))
-        logging.debug((step_1, step_2))
+        # logging.debug((step_1, step_2))
 
     def get_input(self):
         axis_x = self.joystick.get_axis(self.axis_x)

@@ -11,7 +11,7 @@ from mechbot.utils.fields import CsgoTeamEnum
 
 
 class GUIThread(threading.Thread):
-    """Thread deticated to running the pygame display"""
+    """Thread dedicated to running the pygame display"""
     def __init__(self, run_until, config):
         super(GUIThread, self).__init__(name="GUIThread")
         self.team_selection_listeners = []
@@ -21,6 +21,7 @@ class GUIThread(threading.Thread):
         self.detection_queue = queue.Queue(maxsize=5)
         self.display_device = None
         self.target_pos = None
+        self.joystick_pos = np.zeros(2)
         self.team = CsgoTeamEnum(self.config.default_team)
         self.device_status = "Initializing"
 
@@ -47,7 +48,7 @@ class GUIThread(threading.Thread):
             cam_scale = self.config.device_size / 2.0 / x_limit * width
             x = width - x_limit * cam_scale
             y = y_limit * cam_scale
-            return pygame_utils.Camera(cam_scale, x, y, True)
+            return pygame_utils.Camera(cam_scale, x, y, False)
 
         device_camera = create_camera()
 
@@ -58,7 +59,7 @@ class GUIThread(threading.Thread):
 
         while self.active():
             for event in pygame.event.get():
-                if event.type == pygame.QUIT: 
+                if event.type == pygame.QUIT:
                     for listener in self.shutdown_listeners:
                         listener()
                 # Key event
@@ -80,7 +81,7 @@ class GUIThread(threading.Thread):
                 # Resize
                 if event.type == pygame.VIDEORESIZE:
                     screen_size = width, height = event.w, event.h
-                    screen = pygame.display.set_mode(screen_size, 
+                    screen = pygame.display.set_mode(screen_size,
                                                      pygame.RESIZABLE)
                     device_camera = create_camera()
 
@@ -98,8 +99,8 @@ class GUIThread(threading.Thread):
                     color = self.config.rect_color_per_class[class_id-1]
                     color = tuple(color)
                     rect = (y_min * w, x_min * h,
-                           (y_max - y_min) * w, (x_max - x_min) * h)
-                    pygame.draw.rect(frame_surface, color, rect, 
+                            (y_max - y_min) * w, (x_max - x_min) * h)
+                    pygame.draw.rect(frame_surface, color, rect,
                                      self.config.rect_width)
 
                 scale = min(width / h, height / w)  # rotation swaps h and w
@@ -113,8 +114,8 @@ class GUIThread(threading.Thread):
                 for name, (t_min, t_avg, t_max) in deltas.items():
                     info_display.print("{}: {:.0f}ms>{:.0f}ms>{:.0f}ms".format(
                         name, t_min * 1000, t_avg * 1000, t_max * 1000))
-            info_display.print("Device status: "
-                               + self.device_status.capitalize())
+            # info_display.print("Device status: "
+            #                    + self.device_status.capitalize())
 
             info_display.print("Your Team: " + self.team.name.capitalize())
             info_display.print("Press C or T to change team")
@@ -125,6 +126,11 @@ class GUIThread(threading.Thread):
             if display_surface is not None:
                 screen.blit(display_surface, (0, 0))
 
+            team_color_index = 0 if self.team == CsgoTeamEnum.TERRORISTS else 2
+            team_color = self.config.rect_color_per_class[team_color_index]
+            pygame.draw.rect(screen, tuple(team_color),
+                             (0, 0, width, height), 8)
+
             info_display.draw(screen)
 
             # Draw device
@@ -132,12 +138,18 @@ class GUIThread(threading.Thread):
                 # TODO: Background
                 self.display_device.draw(screen, device_camera)
 
+            # Draw Joystick
+            pygame.draw.circle(screen, (33, 34, 41),
+                               device_camera.pixel(self.joystick_pos),
+                               device_camera.pixel_len(
+                                   self.config.joystick_radius * 1.1), 0)
+
+            # Draw target
             if self.target_pos is not None:
-                # TODO: Draw stick
                 pygame.draw.circle(screen, (110, 110, 200),
                                    device_camera.pixel(self.target_pos),
                                    device_camera.pixel_len(
-                                       self.config.joystick_radius), 2)
+                                       self.config.joystick_radius), 3)
 
             clock.tick(self.config.display_fps)
             pygame.display.flip()
@@ -157,8 +169,9 @@ class GUIThread(threading.Thread):
             self.display_device = device
             self.device_status = "Calibrated"
         elif status_type == DeviceStatusEnum.TARGET:
-            pos, s2, s2 = args
+            pos, s2, s2, current = args
             self.target_pos = pos
+            self.joystick_pos = current
         else:
             self.device_status = status_type.name
 
