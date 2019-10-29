@@ -169,7 +169,7 @@ class MotionThread(threading.Thread):
         a0 = self.config.body_target_height
         a1 = 1 - a0
         body_centers = [np.array([(x_min + x_max) / 2,
-                                  y_min * a0 + y_max * a1]) for
+                                  y_min * a0 + y_max * a1]) - 0.5 for
                         (y_min, x_min, y_max, x_max) in bodies]
 
         # range [-0.5, 0.5]
