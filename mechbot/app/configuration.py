@@ -71,6 +71,7 @@ def parse_config():
     parser.add("--pink_class_id", type=int, required=True)
     parser.add("--pink_slow_down", type=float, required=True)
     parser.add("--aim_dampening", type=float, required=True)
+    parser.add("--target_size", type=float, required=True)
     parser.add("--pink_min_area", type=int, required=True)
     parser.add("--text_size", type=int, required=True)
     parser.add("--text_color", type=int, action="append",

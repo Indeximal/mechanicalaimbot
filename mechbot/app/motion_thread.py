@@ -93,6 +93,15 @@ class MotionThread(threading.Thread):
                 target_now = min(targets_now, key=vector_utils.vec_len)
                 target = target_now - camera_motion
 
+                # deemed to be close enough not to move
+                if vector_utils.vec_len(target) < self.config.target_size:
+                    last_target = None
+                    last_motion = None
+                    pre_last_joystick = last_joystick
+                    last_joystick = joystick_input
+                    self.move(interface, np.zeros(2))
+                    continue
+
                 # New target: velocity assumed to be 0
                 if (not self.config.use_velocity_algorithm
                         or last_target is None):
