@@ -16,6 +16,8 @@ parser.add_argument("frame_folder")
 parser.add_argument("frozen_graph")
 parser.add_argument("--max_frames", type=int, default=None)
 parser.add_argument("--batch_size", type=int, default=8)
+parser.add_argument("--threshold", type=float, default=.3)
+parser.add_argument("--output_file", type=str)
 
 args = parser.parse_args()
 
@@ -72,6 +74,7 @@ confidence_scores = []
 batch_size = args.batch_size
 with ObjectDetector(args.frozen_graph) as detector:
     for i in range(0, len(frames), batch_size):
+        print(i, len(frames))
         batch = frames[i: i + batch_size]
         boxes, scores, classes = detector.load_and_run_images(batch)
         predicted_boxes.extend(boxes)
@@ -87,6 +90,8 @@ with ObjectDetector(args.frozen_graph) as detector:
 evaluator = per_image_evaluation.PerImageEvaluation(5,   # 4 classes + unused
                                                     matching_iou_threshold=0.4,
                                                     nms_iou_threshold=0.2)
+
+incorrect_frames = []
 
 for i in range(len(frames)):
     results = evaluator.compute_object_detection_metrics(
@@ -110,3 +115,10 @@ for i in range(len(frames)):
     clean_mAP = [ap for ap in mAP_list if not np.isnan(ap)]
     mAP = sum(clean_mAP) / len(clean_mAP)
     print(frames[i][-9:], "{:2f}".format(mAP), mAP_list)
+
+    if mAP < args.threshold:
+        incorrect_frames.append(frames[i])
+
+print(incorrect_frames)
+with open(args.output_file, "w") as file:
+    file.write(repr(incorrect_frames))
