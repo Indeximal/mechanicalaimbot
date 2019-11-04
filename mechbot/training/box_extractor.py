@@ -9,6 +9,12 @@ class ColoredBoxExtractor():
         self.min_area = min_area
 
     def extract(self, frame):
+        """Extracts colored regions in an image.
+
+        Returns:
+            rects: a list of 4-tuples representing [x, y, width, height] in
+                absolute pixels.
+        """
         # Finds color matching regions
         mask = cv2.inRange(frame, self.lower_color, self.upper_color)
         # Finds blobs in the mask
@@ -50,7 +56,6 @@ class annotated_frames:
                 return last_clean_frame, boxes_list, self
 
     def get_progress(self):
-        curr_frame = videoCapture.get(cv2.CAP_PROP_POS_FRAMES)
-        video_length = videoCapture.get(cv2.CAP_PROP_FRAME_COUNT)
-        return currFrame / video_length
-        
+        curr_frame = self.video_capture.get(cv2.CAP_PROP_POS_FRAMES)
+        video_length = self.video_capture.get(cv2.CAP_PROP_FRAME_COUNT)
+        return curr_frame / video_length

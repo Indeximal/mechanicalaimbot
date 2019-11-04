@@ -1,7 +1,38 @@
+import threading
+import time
+import logging
+
 import numpy as np
 import pygame
 
 from mechbot.utils.vector_utils import vec_len, dir_vec
+
+
+class SimulatorThread(threading.Thread):
+    def __init__(self, simulator, delta_time):
+        super().__init__(name="SimulatorThread")
+        self.daemon = False
+        self.simulator = simulator
+        self.dt = delta_time
+
+    def __enter__(self):
+        self.running = True
+        self.start()
+        return self.simulator.get_interface()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.running = False
+
+    def run(self):
+        tick_counter = 0
+        while self.running:
+            self.simulator.tick(self.dt)
+            if tick_counter % 5 == 0:
+                self.simulator.loop()
+
+            time.sleep(self.dt)
+            tick_counter += 1
+        logging.info("quit sim")
 
 
 class MechanicalSimulator:
@@ -12,10 +43,14 @@ class MechanicalSimulator:
         self.target1 = 0
         self.target2 = 0
         self.move = False
+        self.motion_listeners = []
 
     def get_interface(self):
         """returns an object with the methods get_input and cmd_goto"""
         return self
+
+    def is_alive(self):
+        return True
 
     def get_input(self):
         return np.array(self.stick_pos)
@@ -24,6 +59,9 @@ class MechanicalSimulator:
         self.move = True
         self.target1 = a
         self.target2 = b
+
+    def add_motion_listener(self, listener):
+        self.motion_listeners.append(listener)
 
     def torque_on_motor(self, motor):
         normal_dir = dir_vec(motor.get_angle() + np.pi / 2)
@@ -47,15 +85,23 @@ class MechanicalSimulator:
 
     def loop(self):
         # Step motors, normally done on arduino
+        moved = False
         if self.move:
             if self.device.motor1.step < self.target1:
                 self.device.motor1.left()
+                moved = True
             elif self.device.motor1.step > self.target1:
                 self.device.motor1.right()
+                moved = True
             if self.device.motor2.step < self.target2:
                 self.device.motor2.left()
+                moved = True
             elif self.device.motor2.step > self.target2:
                 self.device.motor2.right()
+                moved = True
+        if moved:
+            for listener in self.motion_listeners:
+                listener(self.device.motor1.step, self.device.motor2.step)
 
     def tick(self, dt):
         # Update stick position

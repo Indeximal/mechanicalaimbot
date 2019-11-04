@@ -1,3 +1,4 @@
+import logging
 import time
 from collections import deque
 
@@ -276,6 +277,109 @@ class CalibrationHelper(MoveController):
 
     def get_result(self):
         return self.device_guess
+
+
+class AlignmentHelper(MoveController):
+    """This class takes control of an interface find the motor alignment"""
+
+    def __init__(self, interface, center_threshold=.05, wait_ticks=20,
+                 max_deflection=.3, motion_threshold=.03, wait_duration=.4):
+        # Init
+        MoveController.__init__(self, interface, wait_ticks=wait_ticks,
+                                motion_threshold=motion_threshold,
+                                wait_duration=wait_duration)
+        self.step_2 = 0
+        self.step_1 = 0
+        self.m1_points = []
+        self.m2_points = []
+        self.state = CalibrationStateEnum.Wait
+        self.center_threshold = center_threshold
+        self.max_deflection = max_deflection
+
+    def apply_to_device(self, device):
+        for nr, data, motor in [(1, self.m1_points, device.motor1),
+                                (2, self.m2_points, device.motor2)]:
+            # Information given by the config
+            dphi = 2 * np.pi / motor.steps
+            mx, my = motor.pos
+            radius = vec_len(motor.pos)
+
+            # Data points outside the center
+            non_zero_data = [(p, s1, s2) for p, s1, s2 in data if vec_len(
+                p) > self.center_threshold]
+
+            angle = np.arctan2(-my, -mx)
+            perpendicular_vec = dir_vec(angle + np.pi / 2)
+
+            # Calculate the align of the motors
+            # Gap angle if the edge was a V-shape.
+            beta = np.arcsin(device.gap / radius)
+            aligns = []
+            for sign in [1, -1]:
+                vec = sign * perpendicular_vec
+                ps = [(p, s1 if nr == 1 else s2) for p, s1, s2 in
+                      non_zero_data if np.dot(p, vec) < 0]
+
+                angles = [(np.arctan2(y - my, x - mx), s) for (x, y), s in ps]
+                aligns += [phi + sign * beta - s * dphi for phi, s in angles]
+
+            align = sum(aligns) / len(aligns)
+            motor.align = align
+
+    def _act(self):
+        # Function for evaluation
+        def reaction(steps, pos, t):
+            over_deflected = vec_len(pos) > self.max_deflection
+
+            if self.state == CalibrationStateEnum.M1_Prepare:
+                # Extended enough
+                if over_deflected:
+                    self.state = CalibrationStateEnum.M1_Gather
+
+            if self.state == CalibrationStateEnum.M1_Gather:
+                # Gather floating points initial guess
+                self.m1_points.append((pos, steps[0], steps[1]))
+                if self.step_1 < 0 and over_deflected:
+                    self.state = CalibrationStateEnum.M2_Prepare
+
+            if self.state == CalibrationStateEnum.M2_Prepare:
+                if self.step_2 > 0 and over_deflected:
+                    self.state = CalibrationStateEnum.M2_Gather
+
+            if self.state == CalibrationStateEnum.M2_Gather:
+                # Gather floating points initial guess
+                self.m2_points.append((pos, steps[0], steps[1]))
+                if self.step_2 < 0 and over_deflected:
+                    # Done, results can now be applied
+                    self.state = CalibrationStateEnum.Done
+
+            self._act()
+
+        # Movements
+        if self.state == CalibrationStateEnum.M1_Prepare:
+            self.step_1 += 1
+            self.move_to(self.step_1, 0, reaction)
+
+        if self.state == CalibrationStateEnum.M1_Gather:
+            self.step_1 -= 1
+            self.move_to(self.step_1, 0, reaction)
+
+        if self.state == CalibrationStateEnum.M2_Prepare:
+            self.step_2 += 1
+            self.move_to(0, self.step_2, reaction)
+
+        if self.state == CalibrationStateEnum.M2_Gather:
+            self.step_2 -= 1
+            self.move_to(0, self.step_2, reaction)
+
+    def start(self):
+        if self.state != CalibrationStateEnum.Wait:
+            raise LogicError("This class can only be started once!")
+        self.state = CalibrationStateEnum.M1_Prepare
+        self._act()
+
+    def is_done(self):
+        return self.state == CalibrationStateEnum.Done
 
 
 class GradientDescentHelper:

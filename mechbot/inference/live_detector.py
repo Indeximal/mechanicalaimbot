@@ -25,13 +25,14 @@ def convert_screen_shot_to_tensor_format(im):
     (im_width, im_height) = im.size
     data = Image.frombytes('RGB', im.size, im.bgra, 'raw', 'BGRX').tobytes()
     # The model expects images to have shape: [1, None, None, 3]
-    return np.frombuffer(data, dtype=np.uint8).reshape((1, im_height, im_width, 3))
+    return np.frombuffer(data, dtype=np.uint8).reshape((im_height, im_width, 3))
 
 
-color_map = [None, (181, 73, 61), (162, 43, 173)] + [(0, 0, 0)] * 100
+color_map = [None, (103, 179, 224), (75, 139, 198), (198, 183, 137),
+             (201, 148, 104)] + [(0, 0, 0)] * 100
 
 # Load graph from drive
-PATH_TO_FROZEN_GRAPH = os.path.join('ssd_mobilenet_v1_csgo_2019_05_21',
+PATH_TO_FROZEN_GRAPH = os.path.join('faster_rcnn_inception_v2_2019_10_24',
     'frozen_inference_graph.pb')
 graph_def = tf.GraphDef()
 with tf.gfile.GFile(PATH_TO_FROZEN_GRAPH, 'rb') as fid:
@@ -73,7 +74,7 @@ with tf.Session() as sess:
 
             # Run inference
             output_dict = sess.run(tensor_dict,
-                                   feed_dict={image_tensor: image_data})
+                                   feed_dict={image_tensor: [image_data]})
             detect_time = partial_clock.time_elapsed() * 1000
 
             # all outputs are float32 numpy arrays, so convert types as appropriate
