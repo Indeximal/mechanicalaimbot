@@ -4,4 +4,4 @@ numpy
 pyserial
 Pillow
 pygame
-tensorflow==1.13.1
+tensorflow==2.3.1
